@@ -15,7 +15,9 @@ A simple tool designed to build and efficiently organize license plate swatches 
 3.  **Import Assets:** Drag and drop your Diff/Mask image or 3D Nrml map into the respective zones.
 4.  **Select Export Path:** Set your base export folder.
 5.  **Compile:** Click **Compile Plates**. The tool will organize your assets and automatically open the directory for you.
-6.  **Note:** You can compile **both** US and EU plates into the same output folder. The tool will automatically merge the files into the existing folder structure rather than overwriting them, so you can build your entire project in a single export session.
+
+## Cumulative Compilation
+The tool is designed to be additive. You can compile US/MX plates, then switch regions and compile EU/UK plates to the **same base folder**. The compiler will merge the new files into the existing folder structure rather than overwriting your previous work, allowing you to build a unified texture pack in one session.
 
 ## 3D Map Maker
 The integrated Map Maker allows you to create depth maps without leaving the tool:
