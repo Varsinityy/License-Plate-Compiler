@@ -12,7 +12,7 @@ A simple tool designed to build and efficiently organize license plate swatches 
 ## How to Use
 1.  **Download:** Grab the latest `PlateCompiler.exe` from the [Releases](https://github.com/Varsinityy/License-Plate-Compiler/releases) page.
 2.  **Configure Region:** Select your target region (EU/UK or US/MX) in the Compiler tab.
-3.  **Import Assets:** Drag and drop your Diff/Mask image or 3D Nrml map into the respective zones.
+3.  **Import Assets:** Drag and drop your Diff/Mask image or Normal map into the respective zones.
 4.  **Select Export Path:** Set your base export folder.
 5.  **Compile:** Click **Compile Plates**. The tool will organize your assets and automatically open the directory for you.
 
