@@ -2,16 +2,20 @@
 A simple tool designed to build and efficiently organize license plate swatches for plate mods. Instead of manually renaming files and creating folders, this tool "compiles" your source images into the exact directory structure the game requires. 
 **Now fully supports the latest version of FH5.**
 
-## Features
-* **Version Support:** Toggle between the latest game version and 1.634.818.0.
-* **Direct Zip Merging:** Automatically injects your new plates straight into your `Textures.zip` file.
-* **Auto Backups & Restore:** Creates `.bak` backups of your original plates inside the zip and includes a one-click restore button to easily undo changes.
-* **Automated Compilation:** Instantly generates the full `.swatchbin` file set for both EU/UK and US/MX regions.
-* **Built-in 3D Map Maker:** Generate high-quality Normal maps directly from source images with granular control over intensity, blur, and extrusion direction.
-* **Standardized Directory Structure:** Automatically builds the `Textures > plates > swatches` hierarchy.
-* **Adobe Integration:** Quick-launch shortcuts for Photoshop and Illustrator with direct access to official plate templates.
-* **Persistent Settings:** Saves your custom Adobe executable paths for a seamless, one-click workflow.
-* **Live Status:** Integrated version tracking and online status indicator.
+## **Features**
+* **Automated Compilation** - Generates the full `.swatchbin` file set for EU/UK and US/MX regions.
+* **Direct Zip Merging** - Injects new plates straight into your `Textures.zip`.
+* **Auto Backups & Restore** - Creates `.bak` backups of original plates with a one-click restore button.
+* **Cumulative Compilation** - Compile US/MX and EU/UK plates to the same base folder to build a unified texture pack in one session.
+* **History Tab** - A dedicated tab to view and manage your previously compiled plates, along with the ability to use them as presets to merge previous plate mods.
+* **Built-in 3D Map Maker** - Generate Normal maps from source images with control over intensity, blur, and extrusion. Includes an **Advanced Toggle** to unlock mask image inputs and secondary map controls.
+* **Adobe Integration** - Quick launch Photoshop or Illustrator with direct access to templates, and send your live 3D map previews directly to either program at full resolution.
+* **Live Image Previews** - The drag-and-drop boxes now display a real thumbnail of your selected image instead of a generic icon.
+* **Aspect Ratio Protection** - The main compiler will safely block you and show a warning if you try to accidentally load an EU image for a US plate (and vice versa).
+* **Game Version Support & Memory** - Toggle between the latest game version and 1.634.818.0. The app will automatically remember your last selected version.
+* **Smarter Path Memory** - Each drop-box and output path now remembers the file path of its last instance, entirely independent from each other.
+* **Expanded Settings** - Customize your workflow with default output folders, 7-Zip compression levels, custom 7-Zip exe paths, and a Silent Mode toggle to bypass success popups.
+* **Auto-Update Checker** - Automatically checks GitHub on startup and notifies you if a newer version is available.
 
 ## How to Use
 1.  **Download:** Grab the latest `PlateCompiler.exe` from the [Releases](https://github.com/Varsinityy/License-Plate-Compiler/releases) page.
