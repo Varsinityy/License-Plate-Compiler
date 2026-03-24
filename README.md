@@ -37,13 +37,13 @@ The integrated Map Maker allows you to create depth maps without leaving the too
 ---
 
 > [!IMPORTANT]
-> **7-Zip Requirement:** This tool requires **7-Zip** to be installed at its default location (`C:\Program Files\7-Zip\7z.exe`) to automatically package and merge your files into the game's archives.
+> **7-Zip Requirement:** This tool requires **7-Zip** to be installed to automatically package and merge your files into the game's archives.
 
 ---
 
 ## Requirements
 * **Windows 10/11**
-* **7-Zip** (installed at default location)
+* **7-Zip**
 
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
