@@ -1,4 +1,4 @@
-﻿import os
+import os
 import shutil
 import requests
 import tempfile
@@ -28,6 +28,20 @@ except ImportError:
     windll = None
 
 ctk.set_appearance_mode("Dark")
+
+class DraggableMixin:
+    """Mixin class to add window dragging functionality to tkinter windows."""
+    
+    def startMove(self, event):
+        """Store initial mouse position for dragging."""
+        self.x = event.x
+        self.y = event.y
+
+    def doMove(self, event):
+        """Move the window based on mouse drag."""
+        x = self.winfo_x() + (event.x - self.x)
+        y = self.winfo_y() + (event.y - self.y)
+        self.geometry(f"+{x}+{y}")
 
 COLORS = {
     "bg_primary": "#09090b", 
@@ -156,7 +170,7 @@ PLATE_TEMPLATES = {
     }
 }
 
-class MaskPainter(ctk.CTkToplevel):
+class MaskPainter(DraggableMixin, ctk.CTkToplevel):
     def __init__(self, master, source_path, mask_path, callback):
         super().__init__(master)
         
@@ -172,7 +186,9 @@ class MaskPainter(ctk.CTkToplevel):
                 self.update() 
                 HWND = windll.user32.GetParent(self.winfo_id())
                 windll.dwmapi.DwmSetWindowAttribute(HWND, 33, byref(c_int(2)), sizeof(c_int(2)))
-            except: pass
+            except (AttributeError, OSError):
+                # DWM API not available or failed, continue without rounded corners
+                pass
 
         self.callback = callback
         self.brush_size = 15
@@ -307,15 +323,6 @@ class MaskPainter(ctk.CTkToplevel):
         self.canvas.bind("<Control-z>", lambda e: self.undo())
         self.canvas.bind("<Control-Z>", lambda e: self.undo())
 
-    def startMove(self, event):
-        self.x = event.x
-        self.y = event.y
-
-    def doMove(self, event):
-        x = self.winfo_x() + (event.x - self.x)
-        y = self.winfo_y() + (event.y - self.y)
-        self.geometry(f"+{x}+{y}")
-
     def minimizeWindow(self):
         try:
             if windll:
@@ -385,7 +392,7 @@ class MaskPainter(ctk.CTkToplevel):
         self.callback(temp)
         self.destroy()
 
-class NormalPainter(ctk.CTkToplevel):
+class NormalPainter(DraggableMixin, ctk.CTkToplevel):
     def __init__(self, master, base_img, callback):
         super().__init__(master)
         self.overrideredirect(True)
@@ -399,7 +406,9 @@ class NormalPainter(ctk.CTkToplevel):
                 self.update() 
                 HWND = windll.user32.GetParent(self.winfo_id())
                 windll.dwmapi.DwmSetWindowAttribute(HWND, 33, byref(c_int(2)), sizeof(c_int(2)))
-            except: pass
+            except (AttributeError, OSError):
+                # DWM API not available or failed, continue without rounded corners
+                pass
 
         self.callback = callback
         self.brush_size = 20
@@ -496,15 +505,6 @@ class NormalPainter(ctk.CTkToplevel):
         self.canvas.bind("<Control-z>", lambda e: self.undo())
         self.canvas.bind("<Control-Z>", lambda e: self.undo())
 
-    def startMove(self, event):
-        self.x = event.x
-        self.y = event.y
-
-    def doMove(self, event):
-        x = self.winfo_x() + (event.x - self.x)
-        y = self.winfo_y() + (event.y - self.y)
-        self.geometry(f"+{x}+{y}")
-
     def setSize(self, val): 
         self.brush_size = int(val)
 
@@ -588,7 +588,8 @@ class DropZone(ctk.CTkFrame):
             
             ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(target_w, target_h))
             self.icon_label.configure(image=ctk_img, text="")
-        except:
+        except (AttributeError, ValueError, OSError):
+            # Image processing failed, show error icon
             self.icon_label.configure(text="❌", text_color=COLORS["accent_danger"])
 
     def OnClick(self, event):
@@ -669,11 +670,13 @@ class HorizontalGradientFrame(ctk.CTkCanvas):
             self.create_line(i, 0, i, height, tags=("gradient",), fill=color)
         self.tag_lower("gradient")
 
-class PlateMakerApp(ctk.CTk):
+class PlateMakerApp(DraggableMixin, ctk.CTk):
     def __init__(self):
         if windll:
             try: windll.shcore.SetProcessDpiAwareness(1)
-            except: pass
+            except (AttributeError, OSError):
+                # DPI awareness not available, continue without it
+                pass
 
         super().__init__()
         
@@ -708,7 +711,9 @@ class PlateMakerApp(ctk.CTk):
         
         if os.path.exists(self.temp_icon_path):
             try: self.iconbitmap(self.temp_icon_path)
-            except: pass
+            except (AttributeError, OSError):
+                # Icon loading failed, continue without custom icon
+                pass
             
         self.mm_preview_thumb = None
         
@@ -805,7 +810,9 @@ class PlateMakerApp(ctk.CTk):
             try:
                 HWND = windll.user32.GetParent(self.winfo_id())
                 windll.dwmapi.DwmSetWindowAttribute(HWND, 33, byref(c_int(2)), sizeof(c_int(2)))
-            except: pass
+            except (AttributeError, OSError):
+                # DWM API not available or failed, continue without rounded corners
+                pass
 
     def loadAssetsSafe(self):
         try:
@@ -815,11 +822,15 @@ class PlateMakerApp(ctk.CTk):
                 icon_img = Image.open(BytesIO(img_data))
                 icon_img.save(self.temp_icon_path, format='ICO', sizes=[(32, 32), (64, 64), (128, 128)])
                 try: self.iconbitmap(self.temp_icon_path)
-                except: pass
+                except (AttributeError, OSError):
+                    # Icon setting failed, continue without custom icon
+                    pass
                 logo_small = ctk.CTkImage(light_image=icon_img, dark_image=icon_img, size=(20, 20))
                 if hasattr(self, 'title_icon_label'):
                     self.title_icon_label.configure(image=logo_small, text="")
-        except: pass
+        except (requests.RequestException, OSError, ValueError):
+            # Icon loading failed, continue without custom icon
+            pass
             
         try:
             response = requests.get(self.logo_url, timeout=3)
@@ -833,7 +844,9 @@ class PlateMakerApp(ctk.CTk):
                 logo_image = ctk.CTkImage(light_image=logo_img, dark_image=logo_img, size=(target_width, target_height))
                 if hasattr(self, 'logo_label'):
                     self.logo_label.configure(image=logo_image, text="")
-        except: pass
+        except (requests.RequestException, OSError, ValueError):
+            # Logo loading failed, continue without custom logo
+            pass
 
         urls = {"ps": self.ps_icon_url, "ai": self.ai_icon_url}
         for key, url in urls.items():
@@ -854,7 +867,9 @@ class PlateMakerApp(ctk.CTk):
                         self.ai_btn_outline.configure(image=self.adobe_icons["ai"], text="") 
                         self.ai_btn_outline_eu.configure(image=self.adobe_icons["ai"], text="")
                         self.ai_btn_preview.configure(image=self.adobe_icons["ai"], text="")
-            except: pass
+            except (requests.RequestException, OSError, ValueError):
+                # Adobe icon loading failed, continue without icons
+                pass
 
         # Template Previews for main EU and US plates
         for key, url in self.template_urls.items():
@@ -872,7 +887,9 @@ class PlateMakerApp(ctk.CTk):
                         self.eu_preview_label.configure(image=preview_img, text="")
                     else:
                         self.us_preview_label.configure(image=preview_img, text="")
-            except: pass
+            except (requests.RequestException, OSError, ValueError):
+                # Template preview loading failed, continue without preview
+                pass
             
         # Template Preview for US Outline
         try:
@@ -885,7 +902,9 @@ class PlateMakerApp(ctk.CTk):
                 preview_img = ctk.CTkImage(light_image=img, dark_image=img, size=(target_w, target_h))
                 if hasattr(self, 'outline_preview_label'):
                     self.outline_preview_label.configure(image=preview_img, text="")
-        except: pass
+        except (OSError, ValueError):
+            # Outline preview loading failed, continue without preview
+            pass
 
         # Template Preview for EU Outline
         try:
@@ -898,7 +917,9 @@ class PlateMakerApp(ctk.CTk):
                 preview_img = ctk.CTkImage(light_image=img, dark_image=img, size=(target_w, target_h))
                 if hasattr(self, 'outline_eu_preview_label'):
                     self.outline_eu_preview_label.configure(image=preview_img, text="")
-        except: pass
+        except (OSError, ValueError):
+            # EU outline preview loading failed, continue without preview
+            pass
 
     def forceTaskbarPresence(self):
         try:
@@ -915,7 +936,9 @@ class PlateMakerApp(ctk.CTk):
             self.withdraw()
             self.deiconify()
             self.focus_force()
-        except: pass
+        except (AttributeError, OSError):
+            # Taskbar presence setup failed, continue without it
+            pass
 
     def setupTitlebar(self):
         self.titlebar = ctk.CTkFrame(self, fg_color=COLORS["bg_secondary"], height=40, corner_radius=0)
@@ -964,15 +987,6 @@ class PlateMakerApp(ctk.CTk):
             windll.user32.ShowWindow(hwnd, 6)
         except Exception:
             self.iconify()
-
-    def startMove(self, event):
-        self.x = event.x
-        self.y = event.y
-
-    def doMove(self, event):
-        x = self.winfo_x() + (event.x - self.x)
-        y = self.winfo_y() + (event.y - self.y)
-        self.geometry(f"+{x}+{y}")
 
     def loadIcon(self, filename, size=20):
         if not hasattr(self, "app_icons"):
@@ -1609,7 +1623,9 @@ class PlateMakerApp(ctk.CTk):
             self.mm_preview_thumb = img.copy()
             self.mm_preview_thumb.thumbnail((400, 150))
             self.UpdatePreview()
-        except: messagebox.showerror("Error", "Failed to load preview.")
+        except (OSError, ValueError):
+            # Image loading failed
+            messagebox.showerror("Error", "Failed to load preview.")
 
     def SchedulePreviewUpdate(self, _=None):
         if self.mm_preview_job: self.after_cancel(self.mm_preview_job)
@@ -1631,7 +1647,8 @@ class PlateMakerApp(ctk.CTk):
                 mask_img = Image.open(mask_path).convert('L').resize(base_map.size)
                 mask_map = self.CreateNormalMapData(self.mm_preview_thumb, m_str, m_blur, m_dir)
                 res_img = Image.composite(mask_map, base_map, mask_img)
-            except:
+            except (OSError, ValueError):
+                # Mask processing failed, use base map only
                 res_img = base_map 
         else:
             res_img = base_map
@@ -2151,7 +2168,9 @@ class PlateMakerApp(ctk.CTk):
             try: 
                 shutil.copyfile(p, os.path.join(out, s))
                 self.log(f"✓ {s}")
-            except: pass
+            except (OSError, IOError):
+                # File copy failed, skip this file
+                pass
 
     def runRestore(self):
         output_base = self.gen_output_dir_var.get()
@@ -2358,8 +2377,8 @@ class PlateMakerApp(ctk.CTk):
             pil_img.thumbnail((new_w, 40)) 
             ctk_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(new_w, 40))
             self.after(0, lambda: label.configure(image=ctk_img, text=""))
-        except:
-            # Fallback icon
+        except (OSError, ValueError):
+            # Image loading failed, show fallback icon
             self.after(0, lambda: label.configure(image=self.loadIcon("image.png", size=24), text=""))
 
     def toggleCart(self, item):
@@ -2602,7 +2621,9 @@ class PlateMakerApp(ctk.CTk):
                                     dialog.update() 
                                     HWND = windll.user32.GetParent(dialog.winfo_id())
                                     windll.dwmapi.DwmSetWindowAttribute(HWND, 33, byref(c_int(2)), sizeof(c_int(2)))
-                                except: pass
+                                except (AttributeError, OSError):
+                                    # DWM API not available, continue without rounded corners
+                                    pass
 
                             container = ctk.CTkFrame(dialog, fg_color=COLORS["bg_secondary"], corner_radius=0, border_width=0)
                             container.pack(fill="both", expand=True, padx=2, pady=2)
@@ -3179,7 +3200,8 @@ del "%~f0"
             if label.winfo_exists():
                 error_icon = self.loadIcon("image.png", size=32)
                 label.configure(image=error_icon, text="")
-        except:
+        except (AttributeError, Exception):
+            # Error handling failed, continue without error icon
             pass
 
     def toggleCart(self, item):
@@ -3566,7 +3588,8 @@ del "%~f0"
                 img.thumbnail((target_w, target_h))
                 ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(target_w, target_h))
                 self.after(0, lambda: label.configure(image=ctk_img, text=""))
-            except:
+            except (AttributeError, ValueError, OSError):
+                # Image processing failed, show error text
                 self.after(0, lambda: label.configure(image="", text="Preview Error"))
         else:
             self.after(0, lambda: label.configure(image="", text=fallback_text))
