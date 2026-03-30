@@ -1,12 +1,13 @@
 # License-Plate-Compiler
 
-A simple tool to build license plate files for Forza Horizon 5 mods. It organizes your images into the exact folders the game needs and fully supports all versions of the game.
+A tool designed to build and organize license plate swatches. Instead of manually renaming files and creating folders, this tool compiles source images into the exact directory structure the game requires. Fully supports all versions of the game.
 
 ## Features
 
 * **Automated Compilation:** Builds the full file set for EU/UK and US/MX regions.
 * **3D Map Maker:** Create depth maps directly inside the tool with a live preview, adjustable intensity, smoothness, extrusion direction, and masking.
 * **Plate Designer:** Type custom text onto built-in state templates to generate new plates.
+* **Presets:** Custom made presets ready for compilation with no outside work.
 * **Direct Zip Merging:** Injects new plates straight into your Textures.zip archive.
 * **Auto Backups:** Automatically saves backups of your original plates so you can restore them with one click.
 
