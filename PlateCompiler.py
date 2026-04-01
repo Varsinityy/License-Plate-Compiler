@@ -59,7 +59,7 @@ COLORS = {
     "text_muted": "#71717a",
 }
 
-APP_VERSION = "1.4.2"
+APP_VERSION = "1.4.3"
 
 EU_UK_FILES = [
     "plate_eu1_base_diff_82ddf780-5958-4917-807d-31a9a76e08fc.swatchbin",
@@ -2455,9 +2455,14 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         if tab_name == "Black":
             self.mask_slider_frame.pack_forget()
             self.base_slider_frame.pack(fill="x")
-        else:
+        elif tab_name == "White":
             self.base_slider_frame.pack_forget()
             self.mask_slider_frame.pack(fill="x")
+        else:
+            # Fallback to base settings for any unexpected value
+            self.mask_slider_frame.pack_forget()
+            self.base_slider_frame.pack(fill="x")
+            self.mm_tab_var.set("Black")
 
     def toggleMmAdvanced(self):
         if self.advanced_mode_var.get():
@@ -2500,8 +2505,8 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                 self.eu_tip_label.grid_forget()
             
             self.mm_tab_toggle.pack_forget()
-            self.mm_tab_var.set("Base Settings")
-            self.switchMmTabs("Base Settings")
+            self.mm_tab_var.set("Black")
+            self.switchMmTabs("Black")
             
         self.SchedulePreviewUpdate()
 
