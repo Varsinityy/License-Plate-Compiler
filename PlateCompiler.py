@@ -59,7 +59,7 @@ COLORS = {
     "text_muted": "#71717a",
 }
 
-APP_VERSION = "1.4.1"
+APP_VERSION = "1.4.2"
 
 EU_UK_FILES = [
     "plate_eu1_base_diff_82ddf780-5958-4917-807d-31a9a76e08fc.swatchbin",
@@ -1531,29 +1531,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.mask_blur.set(1.0)
         self.mask_blur.pack(fill="x", padx=20, pady=(0, 10))
 
-        # Export settings
-        export_settings_frame = ctk.CTkFrame(self.map_maker_page, fg_color=COLORS["bg_secondary"], corner_radius=12, border_width=1, border_color=COLORS["border"])
-        export_settings_frame.pack(fill="x", pady=(0, 10), ipadx=20, ipady=15)
-
-        ctk.CTkLabel(export_settings_frame, text="Export Settings", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=20, pady=(5, 10))
-
-        self.mm_filename_var = ctk.StringVar(value="plate_nrml")
-        ctk.CTkLabel(export_settings_frame, text="File Name:", font=ctk.CTkFont(size=12), text_color=COLORS["text_secondary"]).pack(anchor="w", padx=20)
-        self.mm_filename_entry = ctk.CTkEntry(export_settings_frame, textvariable=self.mm_filename_var, fg_color=COLORS["bg_primary"], border_color=COLORS["border"])
-        self.mm_filename_entry.pack(fill="x", padx=20, pady=(0, 10))
-
-        self.mm_export_dir_var = ctk.StringVar(value="Not Selected")
-        ctk.CTkLabel(export_settings_frame, text="Export Folder:", font=ctk.CTkFont(size=12), text_color=COLORS["text_secondary"]).pack(anchor="w", padx=20)
-        
-        dir_row = ctk.CTkFrame(export_settings_frame, fg_color="transparent")
-        dir_row.pack(fill="x", padx=20, pady=(0, 5))
-        
-        self.mm_dir_entry = ctk.CTkEntry(dir_row, textvariable=self.mm_export_dir_var, fg_color=COLORS["bg_primary"], border_color=COLORS["border"])
-        self.mm_dir_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
-        
-        dir_btn = ctk.CTkButton(dir_row, text="Browse", width=80, fg_color=COLORS["bg_card"], command=self.BrowseMmExportDir)
-        dir_btn.pack(side="right")
-
         # The export buttons
         export_btn_frame = ctk.CTkFrame(self.map_maker_page, fg_color="transparent")
         export_btn_frame.pack(fill="x", pady=(0, 5))
@@ -1608,14 +1585,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
 
         self.mm_status_label = ctk.CTkLabel(self.map_maker_page, text="", font=ctk.CTkFont(size=12, weight="bold"))
         self.mm_status_label.pack(pady=(5, 15))
-
-    def BrowseMmExportDir(self):
-        initial = self.last_dirs.get("mm_out", "/") # Use specific memory key for map maker export directory
-        folder = filedialog.askdirectory(initialdir=initial)
-        if folder:
-            self.last_dirs["mm_out"] = folder # Remember this specific location
-            self.mm_export_dir_var.set(os.path.normpath(folder))
-            self.saveConfig(silent=True)
 
     def LoadPreviewImage(self, path):
         try:
@@ -1677,12 +1646,54 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
 
     def runNormalMapGen(self):
         img_path = self.mm_drop_zone.getPath()
-        mask_path = self.mm_mask_drop_zone.getPath() if self.advanced_mode_var.get() else None
-        save_dir = self.mm_export_dir_var.get()
-        filename = self.mm_filename_var.get()
 
-        if not os.path.isfile(img_path): return
-        if save_dir == "Not Selected": return
+        if not img_path or not os.path.isfile(img_path):
+            messagebox.showerror("Error", "Please select a valid source image first.")
+            return
+
+        # Check if there's a saved painted map
+        if hasattr(self, 'last_mm_map') and os.path.exists(self.last_mm_map):
+            # Use the painted map
+            self.btn_generate_map.configure(state="disabled")
+            self.mm_status_label.configure(text="⏳ Exporting Painted Map... Please wait", text_color=COLORS["accent_secondary"])
+
+            # Open save file dialog
+            initial_dir = self.last_dirs.get("mm_out", "/")
+            save_path = filedialog.asksaveasfilename(
+                initialdir=initial_dir,
+                title="Save Normal Map",
+                defaultextension=".png",
+                filetypes=[("PNG files", "*.png"), ("All files", "*.*")],
+                initialfile="plate_nrml.png"
+            )
+            if not save_path:
+                self.btn_generate_map.configure(state="normal")
+                return  # User cancelled
+
+            # Remember the directory
+            self.last_dirs["mm_out"] = os.path.dirname(save_path)
+            self.saveConfig(silent=True)
+
+            threading.Thread(target=self.ExportPaintedMap, args=(self.last_mm_map, save_path), daemon=True).start()
+            return
+
+        mask_path = self.mm_mask_drop_zone.getPath() if self.advanced_mode_var.get() else None
+
+        # Open save file dialog
+        initial_dir = self.last_dirs.get("mm_out", "/")
+        save_path = filedialog.asksaveasfilename(
+            initialdir=initial_dir,
+            title="Save Normal Map",
+            defaultextension=".png",
+            filetypes=[("PNG files", "*.png"), ("All files", "*.*")],
+            initialfile="plate_nrml.png"
+        )
+        if not save_path:
+            return  # User cancelled
+
+        # Remember the directory
+        self.last_dirs["mm_out"] = os.path.dirname(save_path)
+        self.saveConfig(silent=True)
 
         self.btn_generate_map.configure(state="disabled")
         self.mm_status_label.configure(text="⏳ Exporting High-Res Map... Please wait", text_color=COLORS["accent_secondary"])
@@ -1691,20 +1702,17 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             img_path, mask_path, 
             self.base_intensity.get(), self.base_blur.get(), self.base_extrude.get(),
             self.mask_intensity.get(), self.mask_blur.get(), self.mask_extrude.get(),
-            save_dir, filename
+            save_path
         ), daemon=True).start()
 
-    # Export and paint map buttons
-        export_btn_frame = ctk.CTkFrame(self.map_maker_page, fg_color="transparent")
-        export_btn_frame.pack(fill="x", pady=(0, 5))
+    def ExportPaintedMap(self, source_path, dest_path):
+        try:
+            shutil.copy2(source_path, dest_path)
+            self.after(0, lambda: self.OnExportComplete(True, dest_path))
+        except Exception as e:
+            self.after(0, lambda: self.OnExportComplete(False, str(e)))
 
-        self.btn_generate_map = ctk.CTkButton(export_btn_frame, text="EXPORT", fg_color=COLORS["accent_secondary"], height=50, font=ctk.CTkFont(size=14, weight="bold"), command=self.runNormalMapGen)
-        self.btn_generate_map.pack(side="left", fill="x", expand=True, padx=(0, 5))
-
-        self.btn_paint_map = ctk.CTkButton(export_btn_frame, text="PAINT MAP", fg_color=COLORS["accent_primary"], height=50, font=ctk.CTkFont(size=14, weight="bold"), command=self.openNormalPainter)
-        self.btn_paint_map.pack(side="left", fill="x", expand=True, padx=(5, 0))
-
-    def ProcessNormalMap(self, img_path, mask_path, b_str, b_blur, b_dir, m_str, m_blur, m_dir, save_dir, filename):
+    def ProcessNormalMap(self, img_path, mask_path, b_str, b_blur, b_dir, m_str, m_blur, m_dir, save_path):
         try:
             img = Image.open(img_path)
             base_map = self.CreateNormalMapData(img, b_str, b_blur, b_dir)
@@ -1716,11 +1724,9 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             else:
                 final_img = base_map
 
-            if not filename.lower().endswith(".png"): filename += ".png"
-            out = os.path.join(save_dir, filename)
-            final_img.save(out, format="PNG")
+            final_img.save(save_path, format="PNG")
             
-            self.after(0, lambda: self.OnExportComplete(True, out))
+            self.after(0, lambda: self.OnExportComplete(True, save_path))
         except Exception as e: 
             self.after(0, lambda: self.OnExportComplete(False, str(e)))
 
