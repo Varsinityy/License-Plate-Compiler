@@ -30,15 +30,11 @@ except ImportError:
 ctk.set_appearance_mode("Dark")
 
 class DraggableMixin:
-    """Mixin class to add window dragging functionality to tkinter windows."""
-    
     def startMove(self, event):
-        """Store initial mouse position for dragging."""
         self.x = event.x
         self.y = event.y
 
     def doMove(self, event):
-        """Move the window based on mouse drag."""
         x = self.winfo_x() + (event.x - self.x)
         y = self.winfo_y() + (event.y - self.y)
         self.geometry(f"+{x}+{y}")
@@ -59,7 +55,7 @@ COLORS = {
     "text_muted": "#71717a",
 }
 
-APP_VERSION = "1.4.3"
+APP_VERSION = "1.5.0"
 
 EU_UK_FILES = [
     "plate_eu1_base_diff_82ddf780-5958-4917-807d-31a9a76e08fc.swatchbin",
@@ -187,7 +183,6 @@ class MaskPainter(DraggableMixin, ctk.CTkToplevel):
                 HWND = windll.user32.GetParent(self.winfo_id())
                 windll.dwmapi.DwmSetWindowAttribute(HWND, 33, byref(c_int(2)), sizeof(c_int(2)))
             except (AttributeError, OSError):
-                # DWM API not available or failed, continue without rounded corners
                 pass
 
         self.callback = callback
@@ -225,7 +220,6 @@ class MaskPainter(DraggableMixin, ctk.CTkToplevel):
         title_label.bind("<ButtonPress-1>", self.startMove)
         title_label.bind("<B1-Motion>", self.doMove)
 
-        # Close button
         close_btn = ctk.CTkButton(self.titlebar, text="✕", width=45, height=40, fg_color="transparent", hover_color=COLORS["accent_danger"], command=self.destroy, corner_radius=0)
         close_btn.pack(side="right")
 
@@ -239,7 +233,6 @@ class MaskPainter(DraggableMixin, ctk.CTkToplevel):
         
         self.visual_img = self.source_img.resize((self.new_w, self.new_h)).convert("RGBA")
         
-        # Load existing mask and reconstruct the brush strokes
         if mask_path and os.path.exists(mask_path):
             loaded_mask = Image.open(mask_path).convert("L")
             self.mask_img = loaded_mask.resize((self.new_w, self.new_h), Image.NEAREST)
@@ -263,7 +256,6 @@ class MaskPainter(DraggableMixin, ctk.CTkToplevel):
         ctrl = ctk.CTkFrame(self.container, fg_color="transparent")
         ctrl.pack(fill="x", padx=10, pady=10)
 
-        # Drawing Mode Buttons
         self.btn_black = ctk.CTkButton(
             ctrl, 
             text=" Black (Inward)", 
@@ -291,7 +283,6 @@ class MaskPainter(DraggableMixin, ctk.CTkToplevel):
         self.slider.set(15)
         self.slider.pack(side="left", padx=10)
 
-        # Action Buttons
         ctk.CTkButton(
             ctrl, 
             text=" Undo", 
@@ -348,7 +339,7 @@ class MaskPainter(DraggableMixin, ctk.CTkToplevel):
         self.brush_size = int(val)
 
     def startPaint(self, event):
-        self.canvas.focus_set() # Ctrl+z undo
+        self.canvas.focus_set()
         
         if len(self.history) > 20: 
             self.history.pop(0)
@@ -407,7 +398,6 @@ class NormalPainter(DraggableMixin, ctk.CTkToplevel):
                 HWND = windll.user32.GetParent(self.winfo_id())
                 windll.dwmapi.DwmSetWindowAttribute(HWND, 33, byref(c_int(2)), sizeof(c_int(2)))
             except (AttributeError, OSError):
-                # DWM API not available or failed, continue without rounded corners
                 pass
 
         self.callback = callback
@@ -451,7 +441,6 @@ class NormalPainter(DraggableMixin, ctk.CTkToplevel):
         ctrl = ctk.CTkFrame(self.container, fg_color="transparent")
         ctrl.pack(fill="x", padx=10, pady=10)
 
-        # Mode Button
         self.btn_flat = ctk.CTkButton(
             ctrl, 
             text=" Flatten Area", 
@@ -464,7 +453,6 @@ class NormalPainter(DraggableMixin, ctk.CTkToplevel):
         )
         self.btn_flat.pack(side="left", padx=5)
         
-        # Action Buttons
         ctk.CTkButton(
             ctrl, 
             text=" Undo", 
@@ -544,7 +532,6 @@ class NormalPainter(DraggableMixin, ctk.CTkToplevel):
         self.canvas.itemconfig(self.canvas_img_id, image=self.tk_img)
 
     def apply(self, send_to_compiler=False):
-        # Pass both the image and the choice back to the app
         self.callback(self.full_img, send_to_compiler)
         self.destroy()
 
@@ -560,7 +547,6 @@ class DropZone(ctk.CTkFrame):
         self.inner_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.inner_frame.pack(expand=True, fill="both", padx=3, pady=20)
         
-        # Placeholder icon
         self.placeholder_icon = self.app_ref.loadIcon("image.png", size=36)
         self.icon_label = ctk.CTkLabel(self.inner_frame, text="", image=self.placeholder_icon)
         self.icon_label.pack(pady=(10, 5))
@@ -571,13 +557,30 @@ class DropZone(ctk.CTkFrame):
         self.region_label = ctk.CTkLabel(self.inner_frame, text="", font=ctk.CTkFont(size=11, weight="bold"), text_color=COLORS["accent_primary"])
         self.region_label.pack(pady=(0, 5))
         
-        self.path_entry = ctk.CTkEntry(self.inner_frame, placeholder_text="No file selected...", height=40, fg_color=COLORS["bg_primary"], border_color=COLORS["border"], justify="center")
-        self.path_entry.pack(fill="x", padx=20, pady=(5, 20))
+        entry_row = ctk.CTkFrame(self.inner_frame, fg_color="transparent")
+        entry_row.pack(fill="x", padx=20, pady=(5, 10))
+
+        self.path_entry = ctk.CTkEntry(entry_row, placeholder_text="No file selected...", height=40, fg_color=COLORS["bg_primary"], border_color=COLORS["border"], justify="center")
+        self.path_entry.pack(fill="x", expand=True, side="left", padx=(0, 10))
+
+        clear_icon = self.app_ref.loadIcon("x.png", size=16)
+        self.clear_btn = ctk.CTkButton(entry_row, text="", image=clear_icon, command=self.clear, width=40, height=40, fg_color=COLORS["bg_card"], hover_color=COLORS["accent_danger"])
+        self.clear_btn.pack(side="right")
         
         for widget in [self, self.inner_frame, self.icon_label, self.text_label, self.region_label]:
-            widget.bind("<Button-1>", self.OnClick)
+            widget.bind("<Button-1>", self.onClick)
             
+    def clear(self, event=None):
+        self.path_entry.delete(0, "end")
+        self.configure(border_color=COLORS["border"])
+        self.updatePreview("")
+        if self.command:
+            self.command("")
+
     def updatePreview(self, path):
+        if not path:
+            self.icon_label.configure(image=self.placeholder_icon, text="")
+            return
         try:
             img = Image.open(path)
             w, h = img.size
@@ -589,15 +592,16 @@ class DropZone(ctk.CTkFrame):
             ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(target_w, target_h))
             self.icon_label.configure(image=ctk_img, text="")
         except (AttributeError, ValueError, OSError):
-            # Image processing failed, show error icon
-            self.icon_label.configure(text="❌", text_color=COLORS["accent_danger"])
+            self.icon_label.configure(image=self.placeholder_icon, text="❌")
 
-    def OnClick(self, event):
+    def onClick(self, event):
+        if hasattr(event.widget, 'master') and event.widget.master == self.path_entry.master:
+            return
+
         initial = self.app_ref.last_dirs.get(self.dir_key, "/")
         path = filedialog.askopenfilename(filetypes=self.file_types, initialdir=initial)
         if not path: return
 
-        # Aspect ratio check
         if self.dir_key == "img":
             try:
                 img = Image.open(path)
@@ -633,9 +637,9 @@ class GradientFrame(ctk.CTkCanvas):
         super().__init__(master, highlightthickness=0, **kwargs)
         self.color1 = color1
         self.color2 = color2
-        self.bind("<Configure>", self.DrawGradient)
+        self.bind("<Configure>", self.drawGradient)
 
-    def DrawGradient(self, event=None):
+    def drawGradient(self, event=None):
         self.delete("gradient")
         width = self.winfo_width()
         height = self.winfo_height()
@@ -654,9 +658,9 @@ class HorizontalGradientFrame(ctk.CTkCanvas):
         super().__init__(master, highlightthickness=0, **kwargs)
         self.color1 = color1
         self.color2 = color2
-        self.bind("<Configure>", self.DrawGradient)
+        self.bind("<Configure>", self.drawGradient)
 
-    def DrawGradient(self, event=None):
+    def drawGradient(self, event=None):
         self.delete("gradient")
         width = self.winfo_width()
         height = self.winfo_height()
@@ -675,7 +679,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         if windll:
             try: windll.shcore.SetProcessDpiAwareness(1)
             except (AttributeError, OSError):
-                # DPI awareness not available, continue without it
                 pass
 
         super().__init__()
@@ -693,12 +696,11 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.overrideredirect(True)
         self.image_cache = {}
 
-        # Initialize UI queue
         self.ui_queue = queue.Queue()
-        self.processUiQueue() # Start the listener
+        self.processUIQueue()
         
         self.update_idletasks()
-        self.forceTaskbarPresence()
+        self.forcetaskbarPresence()
         
         self.after(10, self.applyRoundedCorners)
 
@@ -712,7 +714,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         if os.path.exists(self.temp_icon_path):
             try: self.iconbitmap(self.temp_icon_path)
             except (AttributeError, OSError):
-                # Icon loading failed, continue without custom icon
                 pass
             
         self.mm_preview_thumb = None
@@ -728,7 +729,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.setupTitlebar()
         self.setupSidebar()
         
-        # Main view container
         self.view_container = ctk.CTkFrame(self, fg_color=COLORS["bg_content"], corner_radius=15)
         self.view_container.grid(row=1, column=1, sticky="nsew", padx=25, pady=25)
         self.view_container.grid_columnconfigure(0, weight=1)
@@ -755,6 +755,7 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
 
         self.current_frame = None
         self.loadConfig()
+        self.updateRestoreButtonsVisibility()
         
         self.showPage("dashboard")
         
@@ -762,7 +763,7 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
 
         self.toggleHelpText(self.version_var.get())
 
-        self.after(3000, self.checkForUpdates) # Checks 3 seconds after opening
+        self.after(3000, self.checkForUpdates)
         self.attributes("-alpha", 0.0)
         self.animateOpen()
 
@@ -793,16 +794,14 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                 self.overrideredirect(False)
                 self.iconify()
                 
-            # Bind a check to see when the user clicks the taskbar icon
-            self.bind("<FocusIn>", self.OnRestore)
+            self.bind("<FocusIn>", self.onRestore)
 
-    def OnRestore(self, event):
+    def onRestore(self, event):
         self.unbind("<FocusIn>")
         
         if not windll:
             self.overrideredirect(True)
             
-        # Fade back in
         self.animateOpen(0.0)
 
     def applyRoundedCorners(self):
@@ -811,7 +810,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                 HWND = windll.user32.GetParent(self.winfo_id())
                 windll.dwmapi.DwmSetWindowAttribute(HWND, 33, byref(c_int(2)), sizeof(c_int(2)))
             except (AttributeError, OSError):
-                # DWM API not available or failed, continue without rounded corners
                 pass
 
     def loadAssetsSafe(self):
@@ -823,13 +821,11 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                 icon_img.save(self.temp_icon_path, format='ICO', sizes=[(32, 32), (64, 64), (128, 128)])
                 try: self.iconbitmap(self.temp_icon_path)
                 except (AttributeError, OSError):
-                    # Icon setting failed, continue without custom icon
                     pass
                 logo_small = ctk.CTkImage(light_image=icon_img, dark_image=icon_img, size=(20, 20))
                 if hasattr(self, 'title_icon_label'):
                     self.title_icon_label.configure(image=logo_small, text="")
         except (requests.RequestException, OSError, ValueError):
-            # Icon loading failed, continue without custom icon
             pass
             
         try:
@@ -845,7 +841,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                 if hasattr(self, 'logo_label'):
                     self.logo_label.configure(image=logo_image, text="")
         except (requests.RequestException, OSError, ValueError):
-            # Logo loading failed, continue without custom logo
             pass
 
         urls = {"ps": self.ps_icon_url, "ai": self.ai_icon_url}
@@ -868,10 +863,8 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                         self.ai_btn_outline_eu.configure(image=self.adobe_icons["ai"], text="")
                         self.ai_btn_preview.configure(image=self.adobe_icons["ai"], text="")
             except (requests.RequestException, OSError, ValueError):
-                # Adobe icon loading failed, continue without icons
                 pass
 
-        # Template Previews for main EU and US plates
         for key, url in self.template_urls.items():
             try:
                 res = requests.get(url, timeout=3)
@@ -888,10 +881,8 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                     else:
                         self.us_preview_label.configure(image=preview_img, text="")
             except (requests.RequestException, OSError, ValueError):
-                # Template preview loading failed, continue without preview
                 pass
             
-        # Template Preview for US Outline
         try:
             outline_path = resourcePath("outline.png")
             if os.path.exists(outline_path):
@@ -903,10 +894,8 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                 if hasattr(self, 'outline_preview_label'):
                     self.outline_preview_label.configure(image=preview_img, text="")
         except (OSError, ValueError):
-            # Outline preview loading failed, continue without preview
             pass
 
-        # Template Preview for EU Outline
         try:
             outline_eu_path = resourcePath("outline eu.png")
             if os.path.exists(outline_eu_path):
@@ -918,10 +907,9 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                 if hasattr(self, 'outline_eu_preview_label'):
                     self.outline_eu_preview_label.configure(image=preview_img, text="")
         except (OSError, ValueError):
-            # EU outline preview loading failed, continue without preview
             pass
 
-    def forceTaskbarPresence(self):
+    def forcetaskbarPresence(self):
         try:
             if not windll: return
             myappid = 'varsinity.platemaker.tool'
@@ -937,7 +925,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             self.deiconify()
             self.focus_force()
         except (AttributeError, OSError):
-            # Taskbar presence setup failed, continue without it
             pass
 
     def setupTitlebar(self):
@@ -964,7 +951,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         title_label.bind("<ButtonPress-1>", self.startMove)
         title_label.bind("<B1-Motion>", self.doMove)
 
-        # Close button
         close_btn = ctk.CTkButton(
             self.titlebar, 
             text="✕", 
@@ -1017,15 +1003,12 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.nav_frame = ctk.CTkFrame(self, corner_radius=0, fg_color=COLORS["bg_secondary"], width=200)
         self.nav_frame.grid(row=1, column=0, sticky="nsew")
 
-        # Gradient sidebar
         self.sidebar_gradient = GradientFrame(self.nav_frame, color1="#0f0f12", color2="#18181b")
         self.sidebar_gradient.place(relx=0, rely=0, relwidth=1, relheight=1)
 
-        # Sliding indicator
         self.tab_indicator = ctk.CTkFrame(self.nav_frame, width=4, height=40, corner_radius=2, fg_color=COLORS["accent_primary"])
         self.tab_gradient = HorizontalGradientFrame(self.nav_frame, color1=COLORS["accent_primary"], color2=COLORS["bg_primary"])
         
-        # Logo header area
         self.logo_container = ctk.CTkFrame(self.nav_frame, fg_color="transparent", height=80)
         self.logo_container.pack_propagate(False)
         self.logo_container.pack(fill="x", pady=(20, 10))
@@ -1033,7 +1016,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.logo_label = ctk.CTkLabel(self.logo_container, text="PLATE MAKER", font=ctk.CTkFont(size=20, weight="bold"), text_color=COLORS["accent_primary"])
         self.logo_label.pack(pady=25, padx=20)
 
-        # Base style for all page tabs
         tab_style = {
             "anchor": "w", 
             "height": 48, 
@@ -1069,11 +1051,9 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.btn_settings = ctk.CTkButton(self.nav_frame, text=" Settings", image=self.loadIcon("settings.png"), command=lambda: self.showPage("settings"), **tab_style)
         self.btn_settings.pack(fill="x", padx=15, pady=3)
 
-        # Bottom version info and status
         self.footer = ctk.CTkFrame(self.nav_frame, fg_color="#18181b")
         self.footer.pack(side="bottom", fill="x", pady=20, padx=20)
 
-        # Container for the version and button
         ver_container = ctk.CTkFrame(self.footer, fg_color="transparent")
         ver_container.pack(fill="x")
 
@@ -1081,7 +1061,7 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.status_dot.pack(side="left")
         
         self.is_online = True
-        self.animateStatusDot() # Start the animation
+        self.animateStatusDot()
 
         self.status_text = ctk.CTkLabel(ver_container, text=" ONLINE", font=ctk.CTkFont(size=11, weight="bold"), text_color=COLORS["text_secondary"], fg_color="transparent")
         self.status_text.pack(side="left", padx=2)
@@ -1089,7 +1069,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.ver_label = ctk.CTkLabel(ver_container, text=f"v{APP_VERSION}", font=ctk.CTkFont(size=11), text_color=COLORS["text_muted"], fg_color="transparent")
         self.ver_label.pack(side="right")
 
-        # Update button
         self.btn_update = ctk.CTkButton(
             self.footer, 
             text=" Check for Updates", 
@@ -1106,7 +1085,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.btn_update.pack(fill="x", pady=(8, 0))
 
     def showPage(self, page_name):
-        # Prevent spam clicking tabs from breaking the animation
         if getattr(self, "is_animating", False):
             return
 
@@ -1157,7 +1135,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         for btn in all_tabs:
             btn.configure(border_color=COLORS["bg_primary"])
             
-        # Border color for the active tab
         if target_btn:
             target_btn.configure(border_color=COLORS["text_muted"])
 
@@ -1279,11 +1256,22 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
 
         self.updateDropzoneRegions(self.region_var.get())
 
-        # Generator Output Selection
         output_frame = ctk.CTkFrame(self.generator_page, fg_color=COLORS["bg_secondary"], corner_radius=12, border_width=1, border_color=COLORS["border"])
         output_frame.pack(fill="x", pady=(5, 15), ipadx=20, ipady=15)
         
         ctk.CTkLabel(output_frame, text="Step 4: Output Location", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=20, pady=(5, 10))
+        
+        self.output_mode_var = ctk.StringVar(value="Global (Textures.zip)")
+        self.mode_row = ctk.CTkFrame(output_frame, fg_color="transparent")
+        self.mode_row.pack(fill="x", padx=20, pady=(0, 10))
+        ctk.CTkLabel(self.mode_row, text="Output Mode:", font=ctk.CTkFont(size=12, weight="bold")).pack(side="left", padx=(0, 10))
+        self.mode_selector = ctk.CTkSegmentedButton(
+            self.mode_row, values=["Global (Textures.zip)", "Car-Specific (Car Mod .zip)"], 
+            variable=self.output_mode_var, fg_color=COLORS["bg_primary"], 
+            selected_color=COLORS["accent_primary"], text_color=COLORS["text_primary"],
+            command=self.toggleOutputMode
+        )
+        self.mode_selector.pack(side="left")
         
         self.gen_output_dir_var = ctk.StringVar(value="Not Selected")
 
@@ -1293,7 +1281,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.dashboard_page = ctk.CTkScrollableFrame(self.view_container, fg_color=COLORS["bg_primary"])
         self.setupDashboardPage()
 
-        # Preset data
         self.preset_data = [
             {
                 "name": "Quiet Plate 1", 
@@ -1350,14 +1337,13 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         
         self.gen_dir_entry = ctk.CTkEntry(gen_dir_row, textvariable=self.gen_output_dir_var, fg_color=COLORS["bg_primary"], border_color=COLORS["border"])
         self.gen_dir_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
-        self.gen_dir_entry.bind("<Button-1>", lambda e: self.BrowseGenOutputDir())
+        self.gen_dir_entry.bind("<Button-1>", lambda e: self.browseGenOutputDir())
         
-        gen_dir_btn = ctk.CTkButton(gen_dir_row, text="Browse", width=80, fg_color=COLORS["bg_card"], command=self.BrowseGenOutputDir)
+        gen_dir_btn = ctk.CTkButton(gen_dir_row, text="Browse", width=80, fg_color=COLORS["bg_card"], command=self.browseGenOutputDir)
         gen_dir_btn.pack(side="right")
 
         self.sub_help_text_label = ctk.CTkLabel(output_frame, text="", font=ctk.CTkFont(size=11, slant="italic"), text_color=COLORS["text_muted"])
 
-        # Compiler action buttons
         self.btn_generate = ctk.CTkButton(
             self.generator_page, 
             text=" COMPILE PLATES", 
@@ -1381,13 +1367,31 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             font=ctk.CTkFont(size=14, weight="bold"), 
             command=self.runRestore
         )
-        self.btn_restore.pack(fill="x", padx=0, pady=(0, 20), expand=True)
 
         self.log_area = ctk.CTkTextbox(self.generator_page, fg_color=COLORS["bg_secondary"], font=("Consolas", 12), height=150)
         self.log_area.pack(fill="both", expand=True)
 
-    def BrowseGenOutputDir(self):
+    def toggleOutputMode(self, value):
+        if value == "Car-Specific (Car Mod .zip)":
+            self.output_label.configure(text="Car Mod .zip Path:")
+            self.help_text_label.configure(text="Select the .zip file of the car mod you want to apply this plate to.")
+            self.sub_help_text_label.place_forget()
+            self.gen_output_dir_var.set("Not Selected")
+        else:
+            self.toggleHelpText(self.version_var.get())
+
+    def browseGenOutputDir(self):
+        is_car_specific = getattr(self, "output_mode_var", None) and self.output_mode_var.get() == "Car-Specific (Car Mod .zip)"
         initial = self.last_dirs.get("out", "/")
+        
+        if is_car_specific:
+            file = filedialog.askopenfilename(filetypes=[("Zip Archives", "*.zip")], initialdir=initial, title="Select Car Mod .zip")
+            if file: 
+                self.last_dirs["out"] = os.path.dirname(file)
+                self.gen_output_dir_var.set(os.path.normpath(file))
+                self.saveConfig(silent=True)
+            return
+            
         if self.version_var.get() == "Latest (Direct Zip)":
             file = filedialog.askopenfilename(filetypes=[("Zip Archives", "*.zip")], initialdir=initial)
             if file: 
@@ -1412,7 +1416,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
 
         self.advanced_mode_var = ctk.BooleanVar(value=False)
         
-        # Advanced mode switch
         self.adv_switch = ctk.CTkSwitch(
             right_header_frame, 
             text="Advanced Mode", 
@@ -1422,19 +1425,15 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         )
         self.adv_switch.pack(side="top", anchor="e")
         
-        # Info label for advanced mode
         self.adv_info_label = ctk.CTkLabel(right_header_frame, text="", font=ctk.CTkFont(size=10, slant="italic"), text_color=COLORS["text_muted"])
         self.adv_info_label.pack(side="top", anchor="e")
 
-        # Bind hover events to change the info text
         self.adv_switch.bind("<Enter>", lambda e: self.adv_info_label.configure(text="Unlocks masks to control depth for different parts.   "))
         self.adv_switch.bind("<Leave>", lambda e: self.adv_info_label.configure(text=""))
 
-        # Map Maker Instructions
         guide_frame = ctk.CTkFrame(self.map_maker_page, fg_color=COLORS["bg_secondary"], corner_radius=12, border_width=1, border_color=COLORS["border"])
         guide_frame.pack(fill="x", pady=(0, 20))
 
-        # Main instructions
         guide_text = (
             "Generate a 3D Normal Map to give your plate realistic depth in-game.\n\n"
             "1. Drop your plate image into the 'Source Image' box.\n"
@@ -1443,12 +1442,11 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         )
         ctk.CTkLabel(guide_frame, text=guide_text, font=ctk.CTkFont(size=13), text_color=COLORS["text_secondary"], justify="left", wraplength=580).pack(anchor="w", padx=20, pady=(15, 10))
 
-        # Tip with icon
         ctk.CTkLabel(
             guide_frame, 
             text=" Tip: Toggle 'Advanced Mode' to unlock masking.", 
             image=self.loadIcon("lightbulb.png", size=16), 
-            compound="left", # Force image to sit to the left of the text
+            compound="left",
             font=ctk.CTkFont(size=13, weight="bold"), 
             text_color=COLORS["text_primary"]
         ).pack(anchor="w", padx=20, pady=(0, 15))
@@ -1458,17 +1456,15 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.mm_drop_container.grid_columnconfigure(0, weight=1)
         self.mm_drop_container.grid_columnconfigure(1, weight=1)
 
-        # Source image drop zone
-        self.mm_drop_zone = DropZone(self.mm_drop_container, "Source Image", [("Images", "*.png *.jpg *.jpeg")], "mm_source", self, command=self.LoadPreviewImage)
+        self.mm_drop_zone = DropZone(self.mm_drop_container, "Source Image", [("Images", "*.png *.jpg *.jpeg")], "mm_source", self, command=self.loadPreviewImage)
         self.mm_drop_zone.grid(row=0, column=0, sticky="nsew", padx=2, columnspan=2)
 
-        self.mm_mask_drop_zone = DropZone(self.mm_drop_container, "B&W Mask", [("Images", "*.png *.jpg *.jpeg")], "nrml", self, command=self.SchedulePreviewUpdate)
+        self.mm_mask_drop_zone = DropZone(self.mm_drop_container, "B&W Mask", [("Images", "*.png *.jpg *.jpeg")], "nrml", self, command=self.schedulePreviewUpdate)
 
         self.preview_frame = ctk.CTkFrame(self.map_maker_page, fg_color=COLORS["bg_secondary"], corner_radius=12, border_width=1, border_color=COLORS["border"], height=160)
         self.preview_frame.pack(fill="x", pady=(0, 10))
         self.preview_frame.pack_propagate(False)
 
-        # Adobe Launch Buttons for Preview
         self.preview_adobe_bar = ctk.CTkFrame(self.preview_frame, fg_color="transparent")
         self.preview_adobe_bar.place(relx=0.98, rely=0.05, anchor="ne")
 
@@ -1481,11 +1477,9 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.preview_label = ctk.CTkLabel(self.preview_frame, text="Drop an image to see preview...", text_color=COLORS["text_muted"])
         self.preview_label.pack(expand=True)
 
-        # Settings box
         self.settings_box = ctk.CTkFrame(self.map_maker_page, fg_color=COLORS["bg_secondary"], corner_radius=12, border_width=1, border_color=COLORS["border"])
         self.settings_box.pack(fill="x", padx=3, pady=(0, 10))
 
-        # Tab toggle
         self.mm_tab_var = ctk.StringVar(value="Black")
         self.mm_tab_toggle = ctk.CTkSegmentedButton(
             self.settings_box, values=["Black", "White"],
@@ -1496,46 +1490,42 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.slider_container = ctk.CTkFrame(self.settings_box, fg_color="transparent")
         self.slider_container.pack(fill="x", padx=3, pady=(10, 5))
 
-        # Base Sliders
         self.base_slider_frame = ctk.CTkFrame(self.slider_container, fg_color="transparent")
         self.base_slider_frame.pack(fill="x")
 
         self.base_extrude = ctk.StringVar(value="Inward")
         ctk.CTkLabel(self.base_slider_frame, text="Extrusion Direction", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=20, pady=(0, 0))
-        ctk.CTkSegmentedButton(self.base_slider_frame, values=["Inward", "Outward"], variable=self.base_extrude, fg_color=COLORS["bg_primary"], selected_color=COLORS["accent_primary"], command=self.SchedulePreviewUpdate).pack(fill="x", padx=20, pady=(5, 10))
+        ctk.CTkSegmentedButton(self.base_slider_frame, values=["Inward", "Outward"], variable=self.base_extrude, fg_color=COLORS["bg_primary"], selected_color=COLORS["accent_primary"], command=self.schedulePreviewUpdate).pack(fill="x", padx=20, pady=(5, 10))
         
         ctk.CTkLabel(self.base_slider_frame, text="Intensity (Depth)", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=20)
-        self.base_intensity = ctk.CTkSlider(self.base_slider_frame, from_=0.1, to=10.0, button_color=COLORS["accent_primary"], command=self.SchedulePreviewUpdate)
+        self.base_intensity = ctk.CTkSlider(self.base_slider_frame, from_=0.1, to=10.0, button_color=COLORS["accent_primary"], command=self.schedulePreviewUpdate)
         self.base_intensity.set(2.0)
         self.base_intensity.pack(fill="x", padx=20, pady=(0, 10))
 
         ctk.CTkLabel(self.base_slider_frame, text="Smoothness (Blur)", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=20)
-        self.base_blur = ctk.CTkSlider(self.base_slider_frame, from_=0.0, to=5.0, button_color=COLORS["accent_primary"], command=self.SchedulePreviewUpdate)
+        self.base_blur = ctk.CTkSlider(self.base_slider_frame, from_=0.0, to=5.0, button_color=COLORS["accent_primary"], command=self.schedulePreviewUpdate)
         self.base_blur.set(0.5)
         self.base_blur.pack(fill="x", padx=20, pady=(0, 10))
 
-        # Mask Sliders (Hidden by default)
         self.mask_slider_frame = ctk.CTkFrame(self.slider_container, fg_color="transparent")
 
         self.mask_extrude = ctk.StringVar(value="Outward")
         ctk.CTkLabel(self.mask_slider_frame, text="Extrusion Direction", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=20, pady=(0, 0))
-        ctk.CTkSegmentedButton(self.mask_slider_frame, values=["Inward", "Outward"], variable=self.mask_extrude, fg_color=COLORS["bg_primary"], selected_color=COLORS["accent_primary"], command=self.SchedulePreviewUpdate).pack(fill="x", padx=20, pady=(5, 10))
+        ctk.CTkSegmentedButton(self.mask_slider_frame, values=["Inward", "Outward"], variable=self.mask_extrude, fg_color=COLORS["bg_primary"], selected_color=COLORS["accent_primary"], command=self.schedulePreviewUpdate).pack(fill="x", padx=20, pady=(5, 10))
         
         ctk.CTkLabel(self.mask_slider_frame, text="Intensity (Depth)", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=20)
-        self.mask_intensity = ctk.CTkSlider(self.mask_slider_frame, from_=0.1, to=10.0, button_color=COLORS["accent_primary"], command=self.SchedulePreviewUpdate)
+        self.mask_intensity = ctk.CTkSlider(self.mask_slider_frame, from_=0.1, to=10.0, button_color=COLORS["accent_primary"], command=self.schedulePreviewUpdate)
         self.mask_intensity.set(5.0)
         self.mask_intensity.pack(fill="x", padx=20, pady=(0, 10))
 
         ctk.CTkLabel(self.mask_slider_frame, text="Smoothness (Blur)", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=20)
-        self.mask_blur = ctk.CTkSlider(self.mask_slider_frame, from_=0.0, to=5.0, button_color=COLORS["accent_primary"], command=self.SchedulePreviewUpdate)
+        self.mask_blur = ctk.CTkSlider(self.mask_slider_frame, from_=0.0, to=5.0, button_color=COLORS["accent_primary"], command=self.schedulePreviewUpdate)
         self.mask_blur.set(1.0)
         self.mask_blur.pack(fill="x", padx=20, pady=(0, 10))
 
-        # The export buttons
         export_btn_frame = ctk.CTkFrame(self.map_maker_page, fg_color="transparent")
         export_btn_frame.pack(fill="x", pady=(0, 5))
 
-        # Export map button
         self.btn_generate_map = ctk.CTkButton(
             export_btn_frame, 
             text=" EXPORT MAP", 
@@ -1558,7 +1548,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         )
         self.btn_paint_map.pack(side="left", fill="x", expand=True, padx=(5, 0))
 
-        # Send to compiler button
         self.btn_send_to_compiler = ctk.CTkButton(
             self.map_maker_page, 
             text=" SEND TO COMPILER", 
@@ -1566,11 +1555,10 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             fg_color=COLORS["accent_primary"], 
             height=50, 
             font=ctk.CTkFont(size=14, weight="bold"), 
-            command=self.SendMapToCompiler
+            command=self.sendMapToCompiler
         )
         self.btn_send_to_compiler.pack(fill="x", padx=0, pady=(5, 15))
 
-        # Hover Info Text
         self.map_action_info = ctk.CTkLabel(self.map_maker_page, text="", font=ctk.CTkFont(size=11, slant="italic"), text_color=COLORS["text_muted"])
         self.map_action_info.pack(pady=(2, 0))
 
@@ -1586,38 +1574,49 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.mm_status_label = ctk.CTkLabel(self.map_maker_page, text="", font=ctk.CTkFont(size=12, weight="bold"))
         self.mm_status_label.pack(pady=(5, 15))
 
-    def LoadPreviewImage(self, path):
+    def loadPreviewImage(self, path):
+        if not path:
+            self.mm_preview_thumb = None
+            if hasattr(self, 'preview_label'):
+                self.preview_label.configure(image=None, text="Drop an image to see preview...")
+            self.schedulePreviewUpdate()
+            return
+            
         try:
             img = Image.open(path)
             self.mm_preview_thumb = img.copy()
-            self.mm_preview_thumb.thumbnail((400, 150))
-            self.UpdatePreview()
-        except (OSError, ValueError):
-            # Image loading failed
-            messagebox.showerror("Error", "Failed to load preview.")
+            
+            thumb_copy = self.mm_preview_thumb.copy()
+            thumb_copy.thumbnail((400, 150))
+            
+            ctk_img = ctk.CTkImage(light_image=thumb_copy, dark_image=thumb_copy, size=thumb_copy.size)
+            self.preview_label.configure(image=ctk_img, text="")
+            
+            self.schedulePreviewUpdate()
+        except (OSError, ValueError) as e:
+            messagebox.showerror("Error", f"Failed to load preview: {e}")
 
-    def SchedulePreviewUpdate(self, _=None):
+    def schedulePreviewUpdate(self, _=None):
         if self.mm_preview_job: self.after_cancel(self.mm_preview_job)
-        self.mm_preview_job = self.after(150, self.UpdatePreview)
+        self.mm_preview_job = self.after(150, self.updatePreview)
 
-    def UpdatePreview(self):
+    def updatePreview(self):
         if not self.mm_preview_thumb: return
         mask_path = self.mm_mask_drop_zone.getPath() if self.advanced_mode_var.get() else None
-        threading.Thread(target=self.GeneratePreviewThread, args=(
+        threading.Thread(target=self.generatePreviewThread, args=(
             self.base_intensity.get(), self.base_blur.get(), self.base_extrude.get(),
             self.mask_intensity.get(), self.mask_blur.get(), self.mask_extrude.get(), mask_path
         ), daemon=True).start()
 
-    def GeneratePreviewThread(self, b_str, b_blur, b_dir, m_str, m_blur, m_dir, mask_path):
-        base_map = self.CreateNormalMapData(self.mm_preview_thumb, b_str, b_blur, b_dir)
+    def generatePreviewThread(self, b_str, b_blur, b_dir, m_str, m_blur, m_dir, mask_path):
+        base_map = self.createNormalMapData(self.mm_preview_thumb, b_str, b_blur, b_dir)
         
         if mask_path and os.path.exists(mask_path):
             try:
                 mask_img = Image.open(mask_path).convert('L').resize(base_map.size)
-                mask_map = self.CreateNormalMapData(self.mm_preview_thumb, m_str, m_blur, m_dir)
+                mask_map = self.createNormalMapData(self.mm_preview_thumb, m_str, m_blur, m_dir)
                 res_img = Image.composite(mask_map, base_map, mask_img)
             except (OSError, ValueError):
-                # Mask processing failed, use base map only
                 res_img = base_map 
         else:
             res_img = base_map
@@ -1625,7 +1624,7 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         ctk_img = ctk.CTkImage(light_image=res_img, dark_image=res_img, size=res_img.size)
         self.after(0, lambda: self.preview_label.configure(image=ctk_img, text=""))
 
-    def CreateNormalMapData(self, img, strength, blur, direction):
+    def createNormalMapData(self, img, strength, blur, direction):
         width, height = img.size
         scale_factor = width / 400.0
         adj_strength, adj_blur = strength * scale_factor, blur * scale_factor
@@ -1651,13 +1650,10 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             messagebox.showerror("Error", "Please select a valid source image first.")
             return
 
-        # Check if there's a saved painted map
         if hasattr(self, 'last_mm_map') and os.path.exists(self.last_mm_map):
-            # Use the painted map
             self.btn_generate_map.configure(state="disabled")
             self.mm_status_label.configure(text="⏳ Exporting Painted Map... Please wait", text_color=COLORS["accent_secondary"])
 
-            # Open save file dialog
             initial_dir = self.last_dirs.get("mm_out", "/")
             save_path = filedialog.asksaveasfilename(
                 initialdir=initial_dir,
@@ -1668,18 +1664,16 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             )
             if not save_path:
                 self.btn_generate_map.configure(state="normal")
-                return  # User cancelled
+                return
 
-            # Remember the directory
             self.last_dirs["mm_out"] = os.path.dirname(save_path)
             self.saveConfig(silent=True)
 
-            threading.Thread(target=self.ExportPaintedMap, args=(self.last_mm_map, save_path), daemon=True).start()
+            threading.Thread(target=self.exportPaintedMap, args=(self.last_mm_map, save_path), daemon=True).start()
             return
 
         mask_path = self.mm_mask_drop_zone.getPath() if self.advanced_mode_var.get() else None
 
-        # Open save file dialog
         initial_dir = self.last_dirs.get("mm_out", "/")
         save_path = filedialog.asksaveasfilename(
             initialdir=initial_dir,
@@ -1689,48 +1683,47 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             initialfile="plate_nrml.png"
         )
         if not save_path:
-            return  # User cancelled
+            return
 
-        # Remember the directory
         self.last_dirs["mm_out"] = os.path.dirname(save_path)
         self.saveConfig(silent=True)
 
         self.btn_generate_map.configure(state="disabled")
         self.mm_status_label.configure(text="⏳ Exporting High-Res Map... Please wait", text_color=COLORS["accent_secondary"])
 
-        threading.Thread(target=self.ProcessNormalMap, args=(
+        threading.Thread(target=self.processNormalMap, args=(
             img_path, mask_path, 
             self.base_intensity.get(), self.base_blur.get(), self.base_extrude.get(),
             self.mask_intensity.get(), self.mask_blur.get(), self.mask_extrude.get(),
             save_path
         ), daemon=True).start()
 
-    def ExportPaintedMap(self, source_path, dest_path):
+    def exportPaintedMap(self, source_path, dest_path):
         try:
             shutil.copy2(source_path, dest_path)
-            self.after(0, lambda: self.OnExportComplete(True, dest_path))
+            self.after(0, lambda: self.onExportComplete(True, dest_path))
         except Exception as e:
-            self.after(0, lambda: self.OnExportComplete(False, str(e)))
+            self.after(0, lambda: self.onExportComplete(False, str(e)))
 
-    def ProcessNormalMap(self, img_path, mask_path, b_str, b_blur, b_dir, m_str, m_blur, m_dir, save_path):
+    def processNormalMap(self, img_path, mask_path, b_str, b_blur, b_dir, m_str, m_blur, m_dir, save_path):
         try:
             img = Image.open(img_path)
-            base_map = self.CreateNormalMapData(img, b_str, b_blur, b_dir)
+            base_map = self.createNormalMapData(img, b_str, b_blur, b_dir)
             
             if mask_path and os.path.exists(mask_path):
                 mask_img = Image.open(mask_path).convert('L').resize(base_map.size)
-                mask_map = self.CreateNormalMapData(img, m_str, m_blur, m_dir)
+                mask_map = self.createNormalMapData(img, m_str, m_blur, m_dir)
                 final_img = Image.composite(mask_map, base_map, mask_img)
             else:
                 final_img = base_map
 
             final_img.save(save_path, format="PNG")
             
-            self.after(0, lambda: self.OnExportComplete(True, save_path))
+            self.after(0, lambda: self.onExportComplete(True, save_path))
         except Exception as e: 
-            self.after(0, lambda: self.OnExportComplete(False, str(e)))
+            self.after(0, lambda: self.onExportComplete(False, str(e)))
 
-    def OnExportComplete(self, success, message):
+    def onExportComplete(self, success, message):
         self.btn_generate_map.configure(state="normal")
         
         if success:
@@ -1751,7 +1744,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         cards_frame.grid_columnconfigure(0, weight=1)
         cards_frame.grid_columnconfigure(1, weight=1)
 
-        # EU Card (Top Left)
         self.eu_card = ctk.CTkFrame(cards_frame, fg_color=COLORS["bg_secondary"], corner_radius=12, border_width=1, border_color=COLORS["border"])
         self.eu_card.grid(row=0, column=0, sticky="nsew", padx=(0, 5), pady=(0, 0))
 
@@ -1767,7 +1759,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         ctk.CTkLabel(self.eu_card, text="EU & UK Plate", font=ctk.CTkFont(size=14, weight="bold")).pack()
         ctk.CTkButton(self.eu_card, text="Download", fg_color=COLORS["accent_primary"], command=lambda: self.downloadTemplate("eu")).pack(pady=20, padx=20, fill="x")
 
-        # US Card (Top Right)
         self.us_card = ctk.CTkFrame(cards_frame, fg_color=COLORS["bg_secondary"], corner_radius=12, border_width=1, border_color=COLORS["border"])
         self.us_card.grid(row=0, column=1, sticky="nsew", padx=(5, 0), pady=(0, 0))
 
@@ -1783,7 +1774,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         ctk.CTkLabel(self.us_card, text="US & MX Plate", font=ctk.CTkFont(size=14, weight="bold")).pack()
         ctk.CTkButton(self.us_card, text="Download", fg_color=COLORS["accent_primary"], command=lambda: self.downloadTemplate("us")).pack(pady=20, padx=20, fill="x")
 
-        # EU Outline Card (Bottom Left)
         self.outline_eu_card = ctk.CTkFrame(cards_frame, fg_color=COLORS["bg_secondary"], corner_radius=12, border_width=1, border_color=COLORS["border"])
         self.outline_eu_card.grid(row=1, column=0, sticky="nsew", padx=(0, 5), pady=(15, 0))
 
@@ -1799,7 +1789,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         ctk.CTkLabel(self.outline_eu_card, text="EU White Outline", font=ctk.CTkFont(size=14, weight="bold")).pack()
         ctk.CTkButton(self.outline_eu_card, text="Download", fg_color=COLORS["accent_primary"], command=lambda: self.downloadTemplate("outline_eu")).pack(pady=20, padx=20, fill="x")
 
-        # US Outline Card (Bottom Right)
         self.outline_card = ctk.CTkFrame(cards_frame, fg_color=COLORS["bg_secondary"], corner_radius=12, border_width=1, border_color=COLORS["border"])
         self.outline_card.grid(row=1, column=1, sticky="nsew", padx=(5, 0), pady=(15, 0))
 
@@ -1828,7 +1817,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.ai_path_var = ctk.StringVar(value=r"C:\Program Files\Adobe\Adobe Illustrator 2026\Support Files\Contents\Windows\Illustrator.exe")
         self.createPathSetting(path_frame, "Illustrator EXE Path:", self.ai_path_var, mode="exe")
         
-        # Check for bundled 7za.exe first, fall back to standard path if missing
         bundled_7z = resourcePath("7za.exe")
         default_7z = bundled_7z if os.path.exists(bundled_7z) else r"C:\Program Files\7-Zip\7z.exe"
         
@@ -1838,45 +1826,38 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         comp_frame = ctk.CTkFrame(self.settings_page, fg_color=COLORS["bg_secondary"], corner_radius=12, border_width=1, border_color=COLORS["border"])
         comp_frame.pack(fill="x", pady=(10, 0), ipady=5)
         
-        # Default output paths
         self.default_out_latest_var = ctk.StringVar(value="C:\XboxGames\Forza Horizon 5\Content\media\cars\_library\Textures.zip")
         self.createPathSetting(comp_frame, "Default Output - Latest (_library Textures.zip):", self.default_out_latest_var, mode="zip")
         
         self.default_out_var = ctk.StringVar(value="C:\Games\Forza Horizon 5\media\Stripped\MediaOverride\RC0\Cars\_library")
         self.createPathSetting(comp_frame, "Default Output - v1.634 (_library Folder):", self.default_out_var, mode="dir")
         
-        row = ctk.CTkFrame(comp_frame, fg_color="transparent")
-        row.pack(fill="x", padx=20, pady=(15, 10))
-        ctk.CTkLabel(row, text="Compression:").pack(side="left", padx=(0, 10))
+        comp_row = ctk.CTkFrame(comp_frame, fg_color="transparent")
+        comp_row.pack(fill="x", padx=20, pady=(15, 10))
+        ctk.CTkLabel(comp_row, text="Compression:").pack(side="left", padx=(0, 10))
         self.comp_level_var = ctk.StringVar(value="Normal (-mx5)")
-        ctk.CTkOptionMenu(row, variable=self.comp_level_var, values=["Fast (-mx1)", "Normal (-mx5)", "Ultra (-mx9)"], fg_color=COLORS["bg_primary"]).pack(side="left")
+        ctk.CTkOptionMenu(comp_row, variable=self.comp_level_var, values=["Fast (-mx1)", "Normal (-mx5)", "Ultra (-mx9)"], fg_color=COLORS["bg_primary"]).pack(side="left")
         
-        # Silent Mode Row
-        silent_row = ctk.CTkFrame(row, fg_color="transparent")
-        silent_row.pack(side="right")
-
-        self.silent_info_label = ctk.CTkLabel(silent_row, text="", font=ctk.CTkFont(size=10, slant="italic"), text_color=COLORS["text_muted"])
-        self.silent_info_label.pack(side="top", anchor="e")
-
+        silent_row = ctk.CTkFrame(comp_frame, fg_color="transparent")
+        silent_row.pack(fill="x", padx=20, pady=(0, 10))
         self.silent_mode_var = ctk.BooleanVar(value=False)
         self.silent_switch = ctk.CTkSwitch(silent_row, text="Silent Mode", variable=self.silent_mode_var, button_color=COLORS["accent_primary"])
-        self.silent_switch.pack(side="bottom", anchor="e")
+        self.silent_switch.pack(side="left")
 
-        # Bind hover events
-        self.silent_switch.bind("<Enter>", lambda e: self.silent_info_label.configure(text="Disables success popups after compiling"))
+        self.silent_info_label = ctk.CTkLabel(silent_row, text="", font=ctk.CTkFont(size=10, slant="italic"), text_color=COLORS["text_muted"])
+        self.silent_info_label.pack(side="left", padx=(10, 0))
+        self.silent_switch.bind("<Enter>", lambda e: self.silent_info_label.configure(text="(Disables success popups) "))
         self.silent_switch.bind("<Leave>", lambda e: self.silent_info_label.configure(text=""))
-
-        # Settings backup toggle
+        
         backup_row = ctk.CTkFrame(comp_frame, fg_color="transparent")
         backup_row.pack(fill="x", padx=20, pady=(0, 10))
         self.settings_backup_switch = ctk.CTkSwitch(
             backup_row, text="Create Backups during Compilation", 
             variable=self.create_backups_var, button_color=COLORS["accent_primary"], 
-            command=lambda: self.saveConfig(silent=True)
+            command=self.toggleBackups
         )
         self.settings_backup_switch.pack(side="left")
 
-        # Animations toggle
         self.animations_var = ctk.BooleanVar(value=True)
         anim_row = ctk.CTkFrame(comp_frame, fg_color="transparent")
         anim_row.pack(fill="x", padx=20, pady=(0, 10))
@@ -1887,7 +1868,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         )
         self.animations_switch.pack(side="left")
         
-        # Action buttons
         bottom_row = ctk.CTkFrame(self.settings_page, fg_color="transparent")
         bottom_row.pack(fill="x", pady=20)
         
@@ -1948,7 +1928,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         else: 
             self.last_dirs = {"img": "/", "nrml": "/", "out": "/", "mm_source": "/"}
 
-        # Apply correct default output directory on startup
         if hasattr(self, 'gen_output_dir_var'):
             if self.version_var.get() == "Latest (Direct Zip)":
                 if hasattr(self, 'default_out_latest_var') and self.default_out_latest_var.get() != "Not Selected":
@@ -1982,11 +1961,10 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                 messagebox.showerror("Error", f"Failed to save settings to {self.config_file}.\n\nError: {e}")
 
     def launchTemplate(self, t_type, tool):
-        def Task():
+        def task():
             try:
                 exe = self.ps_path_var.get().strip('"') if tool == "photoshop" else self.ai_path_var.get().strip('"')
                 
-                # Check for the local outline files
                 if t_type == "outline":
                     path = resourcePath("outline.png")
                     if not os.path.exists(path):
@@ -1998,7 +1976,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                         self.after(0, lambda: messagebox.showerror("Error", "outline eu.png not found in the app folder."))
                         return
                 else:
-                    # Otherwise, download the web templates
                     r = requests.get(self.template_urls[t_type])
                     path = os.path.join(tempfile.gettempdir(), f"{t_type}_plate.png")
                     with open(path, "wb") as f: f.write(r.content)
@@ -2008,13 +1985,13 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                 else:
                     os.startfile(path)
             except Exception as e: self.after(0, lambda: messagebox.showerror("Error", str(e)))
-        threading.Thread(target=Task, daemon=True).start()
+        threading.Thread(target=task, daemon=True).start()
 
     def downloadTemplate(self, t_type):
         dir_p = filedialog.askdirectory(); 
-        if dir_p: threading.Thread(target=self.ExecuteDownload, args=(dir_p, t_type), daemon=True).start()
+        if dir_p: threading.Thread(target=self.executeDownload, args=(dir_p, t_type), daemon=True).start()
 
-    def ExecuteDownload(self, d, t):
+    def executeDownload(self, d, t):
         try:
             if t == "outline":
                 src = resourcePath("outline.png")
@@ -2040,6 +2017,72 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
 
     def log(self, msg): self.after(0, lambda: (self.log_area.insert("end", f"{msg}\n"), self.log_area.see("end")))
 
+    def patchBinaryPath(self, filepath, old_path_str, new_path_str):
+        with open(filepath, 'rb') as f:
+            data = bytearray(f.read())
+
+        old_bytes = old_path_str.encode('ascii')
+        new_bytes = new_path_str.encode('ascii')
+
+        lower_data = data.lower()
+        lower_old = old_bytes.lower()
+
+        if lower_old not in lower_data:
+            return False 
+
+        start = 0
+        replaced = False
+        while True:
+            idx = lower_data.find(lower_old, start)
+            if idx == -1:
+                break
+            
+            replaced = True
+            overwrite_len = max(len(old_bytes), len(new_bytes))
+            padded_new = new_bytes.ljust(overwrite_len, b'\x00')
+            for i in range(overwrite_len):
+                if idx + i < len(data):
+                    data[idx + i] = padded_new[i]
+            start = idx + overwrite_len
+
+        if replaced:
+            with open(filepath, 'wb') as f:
+                f.write(data)
+            return True
+        return False
+
+    def patchBinaryRegex(self, filepath, pattern, replace_func):
+        import re
+        with open(filepath, 'rb') as f:
+            data = bytearray(f.read())
+            
+        matches = list(re.finditer(pattern, data, flags=re.IGNORECASE))
+        if not matches:
+            return False
+            
+        replaced = False
+        for match in matches:
+            old_bytes = match.group(0)
+            old_str = old_bytes.decode('ascii', errors='ignore')
+            new_str = replace_func(old_str)
+            
+            if new_str:
+                new_bytes = new_str.encode('ascii')
+                overwrite_len = max(len(old_bytes), len(new_bytes))
+                padded_new = new_bytes.ljust(overwrite_len, b'\x00')
+                
+                start, _ = match.span()
+                for i in range(overwrite_len):
+                    if start + i < len(data):
+                        data[start + i] = padded_new[i]
+                replaced = True
+                
+        if replaced:
+            with open(filepath, 'wb') as f:
+                f.write(data)
+            return True
+        return False
+
     def runGeneration(self):
         img_path = self.image_drop_zone.getPath()
         nrml_path = self.nrml_drop_zone.getPath()
@@ -2057,17 +2100,24 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             messagebox.showerror("Error", "Please select at least one file to generate.")
             return
             
-        if output_base == "Not Selected" or (self.version_var.get() == "1.634.818.0" and not os.path.isdir(output_base)) or (self.version_var.get() == "Latest (Direct Zip)" and not os.path.isfile(output_base)):
-            messagebox.showerror("Error", "Please select a valid output folder or Textures.zip file.")
-            return
+        is_car_specific = getattr(self, "output_mode_var", None) and self.output_mode_var.get() == "Car-Specific (Car Mod .zip)"
+
+        if is_car_specific:
+            if output_base == "Not Selected" or not os.path.isfile(output_base) or not output_base.lower().endswith('.zip'):
+                messagebox.showerror("Error", "Please select a valid Car Mod .zip file.")
+                return
+        else:
+            if output_base == "Not Selected" or (self.version_var.get() == "1.634.818.0" and not os.path.isdir(output_base)) or (self.version_var.get() == "Latest (Direct Zip)" and not os.path.isfile(output_base)):
+                messagebox.showerror("Error", "Please select a valid output folder or Textures.zip file.")
+                return
 
         self.log("Starting plate generation...")
         self.is_compiling = True
         self.spinner_frame = 0
         self.animateButton()
-        threading.Thread(target=self.ProcessFiles, args=(img_path, nrml_path, output_base), daemon=True).start()
+        threading.Thread(target=self.processFiles, args=(img_path, nrml_path, output_base), daemon=True).start()
 
-    def ProcessFiles(self, img_path, nrml_path, out_dir, silent=False):
+    def processFiles(self, img_path, nrml_path, out_dir, silent=False):
         try:
             output_base = out_dir
             selected_region = self.region_var.get()
@@ -2078,6 +2128,8 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             sz_path = self.sz_path_var.get().strip('"')
             comp_flag = "-mx1" if "mx1" in self.comp_level_var.get() else "-mx9" if "mx9" in self.comp_level_var.get() else "-mx5"
             is_silent = silent or self.silent_mode_var.get()
+            
+            is_car_specific = getattr(self, "output_mode_var", None) and self.output_mode_var.get() == "Car-Specific (Car Mod .zip)"
 
             if not os.path.exists(sz_path):
                 sz_path = resourcePath("7za.exe")
@@ -2085,8 +2137,105 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             if not os.path.exists(sz_path): 
                 raise FileNotFoundError(f"7-Zip not found. Checked settings and portable fallback.")
 
+            if is_car_specific:
+                self.log("Extracting Car Mod Zip...")
+                temp_dir = tempfile.mkdtemp()
+                subprocess.run([sz_path, "x", output_base, f"-o{temp_dir}"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                
+                car_id = os.path.splitext(os.path.basename(output_base))[0]
+                self.log(f"Using zip name as Car ID: {car_id}")
+                
+                textures_dir = os.path.join(temp_dir, "textures")
+                materials_dir = os.path.join(temp_dir, "materials")
+                    
+                os.makedirs(textures_dir, exist_ok=True)
+                os.makedirs(materials_dir, exist_ok=True)
+
+                self.log("Generating swatches in Car textures folder...")
+                prefix = "euplate" if selected_region == "EU & UK" else "usplate"
+                diff_name = f"{prefix}_diff.swatchbin"
+                nrml_name = f"{prefix}_nrml.swatchbin"
+                
+                if img_path and os.path.isfile(img_path):
+                    shutil.copyfile(img_path, os.path.join(textures_dir, diff_name))
+                    self.log(f"✓ {diff_name}")
+                if nrml_path and os.path.isfile(nrml_path):
+                    shutil.copyfile(nrml_path, os.path.join(textures_dir, nrml_name))
+                    self.log(f"✓ {nrml_name}")
+
+                self.log("Injecting and patching Material and Model bins...")
+                base_mat_name = "plateeu_base.materialbin" if selected_region == "EU & UK" else "plateus_base.materialbin"
+                base_model_name = "PlateEU_a.modelbin" if selected_region == "EU & UK" else "PlateUS_a.modelbin"
+                
+                ref_mat_name = "plateEU_base.materialbin" if selected_region == "EU & UK" else "plateUS_base.materialbin"
+                base_mat_path = resourcePath(ref_mat_name)
+                if not os.path.exists(base_mat_path):
+                    base_mat_path = resourcePath(base_mat_name)
+                
+                if not os.path.exists(base_mat_path):
+                    self.log(f"WARNING: Reference {ref_mat_name} not found in tool folder! Please include it for car-specific plates to work.")
+                else:
+                    dest_mat_path = os.path.join(materials_dir, base_mat_name)
+                    shutil.copy(base_mat_path, dest_mat_path)
+                    
+                    model_path = None
+                    for root, dirs, files in os.walk(temp_dir):
+                        for f in files:
+                            if f.lower() == base_model_name.lower():
+                                model_path = os.path.join(root, f)
+                                break
+                        if model_path: break
+                        
+                    if model_path:
+                        if getattr(self, "create_backups_var", ctk.BooleanVar(value=True)).get():
+                            bak_path = model_path + ".bak"
+                            if not os.path.exists(bak_path):
+                                shutil.copy2(model_path, bak_path)
+                                self.log(f"✓ Backed up {base_model_name}")
+
+                        mat_pattern = b'Game:\\\\[mM]edia\\\\cars\\\\[a-zA-Z0-9_\\\\.\\s-]+?\\.materialbin'
+                        def replModel(old_str):
+                            if "_base.materialbin" in old_str.lower():
+                                return f"Game:\\Media\\cars\\{car_id}\\materials\\{base_mat_name}"
+                            return None
+                        
+                        patched = self.patchBinaryRegex(model_path, mat_pattern, replModel)
+                        if patched:
+                            self.log(f"✓ Patched {base_model_name}")
+                        else:
+                            self.log(f"✗ Failed to patch {base_model_name} (String not found)")
+                    else:
+                        self.log(f"WARNING: {base_model_name} not found in the car mod!")
+
+                    swatch_pattern = b'Game:\\\\[mM]edia\\\\cars\\\\_library\\\\[a-zA-Z0-9_\\\\.\\s-]+?\\.swatchbin'
+                    def replSwatch(old_str):
+                        lower_str = old_str.lower()
+                        if "diff" in lower_str:
+                            return f"Game:\\Media\\cars\\{car_id}\\textures\\{diff_name}"
+                        elif "nrml" in lower_str:
+                            return f"Game:\\Media\\cars\\{car_id}\\textures\\{nrml_name}"
+                        return None
+                        
+                    patched_mat = self.patchBinaryRegex(dest_mat_path, swatch_pattern, replSwatch)
+
+                    if patched_mat:
+                        self.log(f"✓ Patched {base_mat_name}")
+                    else:
+                        self.log(f"✗ Failed to patch {base_mat_name} (Strings not found)")
+
+                self.log(f"Repacking Car Mod Zip with {comp_flag} compression...")
+                os.remove(output_base)
+                subprocess.run([sz_path, "a", "-tzip", comp_flag, output_base, f"{temp_dir}\\*"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+
+                shutil.rmtree(temp_dir)
+                self.is_compiling = False
+                self.total_compiled += 1
+                self.saveConfig(silent=True)
+                self.log("Car-specific build complete!")
+                if not is_silent: self.after(0, lambda: messagebox.showinfo("Success", "Successfully modified the car mod!"))
+                return
+
             if is_latest:
-                # Fallback to portable 7-Zip if settings path is broken
                 if not os.path.exists(sz_path):
                     sz_path = resourcePath("7za.exe")
 
@@ -2100,7 +2249,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                 swatches_dir = os.path.join(temp_dir, "plates", "swatches")
                 os.makedirs(swatches_dir, exist_ok=True)
 
-                # Backup existing originals if enabled
                 if getattr(self, "create_backups_var", ctk.BooleanVar(value=True)).get():
                     self.log("Backing up existing originals to .bak...")
                     for f in target_files + atlas_files:
@@ -2109,8 +2257,8 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                             os.replace(target_file, target_file + ".bak")
 
                 self.log("Generating new plates...")
-                if img_path and os.path.isfile(img_path): self.GenerateSwatches(img_path, target_files, False, swatches_dir)
-                if nrml_path and os.path.isfile(nrml_path): self.GenerateSwatches(nrml_path, target_files, True, swatches_dir)
+                if img_path and os.path.isfile(img_path): self.generateSwatches(img_path, target_files, False, swatches_dir)
+                if nrml_path and os.path.isfile(nrml_path): self.generateSwatches(nrml_path, target_files, True, swatches_dir)
 
                 blank = Image.new('RGBA', (1024, 1024), (0, 0, 0, 0))
                 for a in atlas_files: blank.save(os.path.join(swatches_dir, a), format="PNG")
@@ -2138,7 +2286,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                     self.log("Existing Textures.zip found. Extracting and merging...")
                     subprocess.run([sz_path, "x", target_zip, f"-o{temp_dir}"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
                     
-                    # Backup existing originals if enabled
                     if getattr(self, "create_backups_var", ctk.BooleanVar(value=True)).get():
                         self.log("Backing up originals to .bak...")
                         for f in target_files + atlas_files:
@@ -2149,8 +2296,8 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                     self.log("No Textures.zip found. Creating a new one...")
 
                 self.log("Generating new plates...")
-                if img_path and os.path.isfile(img_path): self.GenerateSwatches(img_path, target_files, False, swatches_dir)
-                if nrml_path and os.path.isfile(nrml_path): self.GenerateSwatches(nrml_path, target_files, True, swatches_dir)
+                if img_path and os.path.isfile(img_path): self.generateSwatches(img_path, target_files, False, swatches_dir)
+                if nrml_path and os.path.isfile(nrml_path): self.generateSwatches(nrml_path, target_files, True, swatches_dir)
 
                 blank = Image.new('RGBA', (1024, 1024), (0, 0, 0, 0))
                 for a in atlas_files: blank.save(os.path.join(swatches_dir, a), format="PNG")
@@ -2169,29 +2316,34 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             self.is_compiling = False
             self.after(0, lambda err=e: messagebox.showerror("Generation Error", f"An error occurred:\n{err}"))
 
-    def GenerateSwatches(self, p, t, is_n, out):
+    def generateSwatches(self, p, t, is_n, out):
         for s in [f for f in t if ("nrml" in f) == is_n]:
             try: 
                 shutil.copyfile(p, os.path.join(out, s))
                 self.log(f"✓ {s}")
             except (OSError, IOError):
-                # File copy failed, skip this file
                 pass
 
     def runRestore(self):
         output_base = self.gen_output_dir_var.get()
-        if self.version_var.get() != "Latest (Direct Zip)" or not os.path.isfile(output_base):
-            messagebox.showerror("Error", "Please select your Textures.zip file in 'Latest' mode first.")
-            return
+        is_car_specific = getattr(self, "output_mode_var", None) and self.output_mode_var.get() == "Car-Specific (Car Mod .zip)"
+        
+        if is_car_specific:
+            if output_base == "Not Selected" or not os.path.isfile(output_base) or not output_base.lower().endswith('.zip'):
+                messagebox.showerror("Error", "Please select a valid Car Mod .zip file first.")
+                return
+        else:
+            if self.version_var.get() != "Latest (Direct Zip)" or not os.path.isfile(output_base):
+                messagebox.showerror("Error", "Please select your Textures.zip file in 'Latest' mode first.")
+                return
             
-        threading.Thread(target=self.ProcessRestore, args=(output_base,), daemon=True).start()
+        threading.Thread(target=self.processRestore, args=(output_base, is_car_specific), daemon=True).start()
 
-    def ProcessRestore(self, output_base):
+    def processRestore(self, output_base, is_car_specific=False):
         try:
             self.log("Starting restore process...")
             sz_path = self.sz_path_var.get().strip('"')
 
-            # Fallback to portable 7-Zip if settings path is broken
             if not os.path.exists(sz_path):
                 sz_path = resourcePath("7za.exe")
 
@@ -2204,27 +2356,53 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
 
             temp_dir = tempfile.mkdtemp()
             
-            self.log("Extracting Textures.zip...")
-            subprocess.run([sz_path, "x", output_base, f"-o{temp_dir}"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
-
-            swatches_dir = os.path.join(temp_dir, "plates", "swatches")
-            
-            self.log("Restoring .bak files...")
-            for f in target_files + atlas_files:
-                target_file = os.path.join(swatches_dir, f)
-                bak_file = target_file + ".bak"
+            if is_car_specific:
+                self.log("Extracting Car Mod Zip...")
+                subprocess.run([sz_path, "x", output_base, f"-o{temp_dir}", "-y"], check=True, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
                 
-                if os.path.exists(target_file): os.remove(target_file)
-                if os.path.exists(bak_file): os.rename(bak_file, target_file)
+                self.log("Restoring .bak files in Car Mod...")
+                restored_any = False
+                for root, dirs, files in os.walk(temp_dir):
+                    for f in files:
+                        if f.endswith(".bak"):
+                            target_file = os.path.join(root, f[:-4])
+                            bak_file = os.path.join(root, f)
+                            if os.path.exists(target_file):
+                                os.remove(target_file)
+                            os.rename(bak_file, target_file)
+                            restored_any = True
+                
+                if not restored_any:
+                    self.log("No .bak files found to restore.")
+                else:
+                    self.log("Rebuilding Car Mod Zip...")
+                    comp_flag = "-mx1" if "mx1" in self.comp_level_var.get() else "-mx9" if "mx9" in self.comp_level_var.get() else "-mx5"
+                    os.remove(output_base)
+                    subprocess.run([sz_path, "a", "-tzip", comp_flag, output_base, f"{temp_dir}\\*"], check=True, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            else:
+                self.log("Extracting Textures.zip...")
+                subprocess.run([sz_path, "x", output_base, f"-o{temp_dir}", "-y"], check=True, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
 
-            self.log("Rebuilding Textures.zip...")
-            os.remove(output_base)
-            comp_flag = "-mx1" if "mx1" in self.comp_level_var.get() else "-mx9" if "mx9" in self.comp_level_var.get() else "-mx5"
-            subprocess.run([sz_path, "a", "-tzip", comp_flag, output_base, f"{temp_dir}\\*"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                swatches_dir = os.path.join(temp_dir, "plates", "swatches")
+                
+                self.log("Restoring .bak files...")
+                for f in target_files + atlas_files:
+                    target_file = os.path.join(swatches_dir, f)
+                    bak_file = target_file + ".bak"
+                    
+                    if os.path.exists(target_file): os.remove(target_file)
+                    if os.path.exists(bak_file): os.rename(bak_file, target_file)
+
+                self.log("Rebuilding Textures.zip...")
+                os.remove(output_base)
+                comp_flag = "-mx1" if "mx1" in self.comp_level_var.get() else "-mx9" if "mx9" in self.comp_level_var.get() else "-mx5"
+                subprocess.run([sz_path, "a", "-tzip", comp_flag, output_base, f"{temp_dir}\\*"], check=True, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
 
             shutil.rmtree(temp_dir)
             self.log("Restore complete!")
             self.after(0, lambda: messagebox.showinfo("Success", "Original plates restored!"))
+        except subprocess.CalledProcessError as e:
+            self.after(0, lambda err=e: messagebox.showerror("7-Zip Error", f"Failed to process archive (Exit Code {err.returncode}).\n\nOutput:\n{err.stderr.strip() if err.stderr else err.stdout.strip()}"))
         except Exception as e:
             self.after(0, lambda: messagebox.showerror("Restore Error", str(e)))
 
@@ -2242,7 +2420,81 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.spinner_frame += 1
         self.after(100, self.animateButton)
 
+    def toggleBackups(self):
+        self.saveConfig(silent=True)
+        self.updateRestoreButtonsVisibility()
+
+    def updateRestoreButtonsVisibility(self):
+        show = self.create_backups_var.get()
+        
+        if hasattr(self, 'btn_restore') and self.btn_restore.winfo_exists():
+            if show:
+                if not self.btn_restore.winfo_manager() and hasattr(self, 'log_area'):
+                    self.btn_restore.pack(fill="x", padx=0, pady=(0, 20), expand=True, before=self.log_area)
+            else:
+                self.btn_restore.pack_forget()
+                
+        if hasattr(self, 'history_restore_btn') and self.history_restore_btn.winfo_exists():
+            if show:
+                if not self.history_restore_btn.winfo_manager() and hasattr(self, 'history_list'):
+                    self.history_restore_btn.pack(fill="x", padx=0, pady=(0, 20), before=self.history_list)
+            else:
+                self.history_restore_btn.pack_forget()
+
+        if hasattr(self, 'preset_restore_btn') and self.preset_restore_btn.winfo_exists():
+            if show:
+                if not self.preset_restore_btn.winfo_manager() and hasattr(self, 'presets_list'):
+                    self.preset_restore_btn.pack(fill="x", padx=0, pady=(0, 20), before=self.presets_list)
+            else:
+                self.preset_restore_btn.pack_forget()
+
     def toggleHelpText(self, value):
+        if value == "Latest (Direct Zip)":
+            if hasattr(self, "mode_row"):
+                self.mode_row.pack_forget()
+            if hasattr(self, "history_mode_container"):
+                self.history_mode_container.pack_forget()
+            if hasattr(self, "preset_mode_container"):
+                self.preset_mode_container.pack_forget()
+                
+            if hasattr(self, "history_output_container") and hasattr(self, "history_top_row"):
+                self.history_output_container.pack_forget()
+                if hasattr(self, "history_bottom_row"):
+                    self.history_bottom_row.pack_forget()
+                self.history_output_container.pack(in_=self.history_top_row, side="left", fill="x", expand=True)
+
+            if hasattr(self, "preset_output_container") and hasattr(self, "preset_top_row"):
+                self.preset_output_container.pack_forget()
+                if hasattr(self, "preset_bottom_row"):
+                    self.preset_bottom_row.pack_forget()
+                self.preset_output_container.pack(in_=self.preset_top_row, side="left", fill="x", expand=True)
+
+            if getattr(self, "output_mode_var", None) and self.output_mode_var.get() != "Global (Textures.zip)":
+                self.output_mode_var.set("Global (Textures.zip)")
+                self.toggleOutputMode("Global (Textures.zip)")
+        else:
+            if hasattr(self, "mode_row") and hasattr(self, "output_label") and not self.mode_row.winfo_manager():
+                self.mode_row.pack(fill="x", padx=20, pady=(0, 10), before=self.output_label)
+                
+            if hasattr(self, "history_mode_container") and not self.history_mode_container.winfo_manager():
+                self.history_mode_container.pack(side="left")
+                
+            if hasattr(self, "history_output_container") and hasattr(self, "history_bottom_row"):
+                self.history_output_container.pack_forget()
+                self.history_bottom_row.pack(fill="x", pady=(10, 0))
+                self.history_output_container.pack(in_=self.history_bottom_row, side="left", fill="x", expand=True)
+
+            if hasattr(self, "preset_mode_container") and not self.preset_mode_container.winfo_manager():
+                self.preset_mode_container.pack(side="left")
+                
+            if hasattr(self, "preset_output_container") and hasattr(self, "preset_bottom_row"):
+                self.preset_output_container.pack_forget()
+                self.preset_bottom_row.pack(fill="x", pady=(10, 0))
+                self.preset_output_container.pack(in_=self.preset_bottom_row, side="left", fill="x", expand=True)
+
+        if getattr(self, "output_mode_var", None) and self.output_mode_var.get() == "Car-Specific (Car Mod .zip)":
+            return
+            
         if value == "Latest (Direct Zip)":
             self.output_label.configure(text="Textures.zip Path:")
             self.help_text_label.configure(text=r"Select your original Textures.zip file in Forza Horizon 5\Content\media\cars\_library")
@@ -2258,7 +2510,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             self.sub_help_text_label.configure(text="Automatically merges into any existing Textures.zip you might have from other mods. ")
             self.sub_help_text_label.place(x=20, rely=0.82)
             
-            # Swap to 1.634 default output directory
             if hasattr(self, 'default_out_var'):
                 old_def = self.default_out_var.get()
                 self.gen_output_dir_var.set(old_def if old_def != "Not Selected" else "Not Selected")
@@ -2278,13 +2529,18 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.cart_status = ctk.CTkLabel(self.history_page, text="No Plates Selected", font=ctk.CTkFont(size=14), text_color=COLORS["accent_primary"])
         self.cart_status.pack(anchor="w", pady=(0, 10))
 
-        settings_frame = ctk.CTkFrame(self.history_page, fg_color="transparent")
-        settings_frame.pack(fill="x", pady=(0, 15))
+        self.history_settings_frame = ctk.CTkFrame(self.history_page, fg_color="transparent")
+        self.history_settings_frame.pack(fill="x", pady=(0, 15))
 
-        ctk.CTkLabel(settings_frame, text="Version:", font=ctk.CTkFont(size=13, weight="bold")).pack(side="left", padx=(0, 10))
+        self.history_top_row = ctk.CTkFrame(self.history_settings_frame, fg_color="transparent")
+        self.history_top_row.pack(fill="x")
+
+        self.history_bottom_row = ctk.CTkFrame(self.history_settings_frame, fg_color="transparent")
+
+        ctk.CTkLabel(self.history_top_row, text="Version:", font=ctk.CTkFont(size=13, weight="bold")).pack(side="left", padx=(0, 10))
         
         ctk.CTkOptionMenu(
-            settings_frame, 
+            self.history_top_row, 
             variable=self.version_var, 
             values=["Latest (Direct Zip)", "1.634.818.0"], 
             width=170, 
@@ -2295,18 +2551,31 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             dropdown_hover_color=COLORS["border"], 
             dropdown_text_color=COLORS["text_primary"], 
             corner_radius=6,
-            command=lambda _: self.saveConfig(silent=True)
+            command=lambda v: (self.toggleHelpText(v), self.saveConfig(silent=True))
         ).pack(side="left", padx=(0, 20))
 
-        ctk.CTkLabel(settings_frame, text="Output:", font=ctk.CTkFont(size=13, weight="bold")).pack(side="left", padx=(0, 10))
+        self.history_mode_container = ctk.CTkFrame(self.history_top_row, fg_color="transparent")
         
-        self.history_dir_entry = ctk.CTkEntry(settings_frame, textvariable=self.gen_output_dir_var, fg_color=COLORS["bg_secondary"], border_color=COLORS["border"])
-        self.history_dir_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
-        self.history_dir_entry.bind("<Button-1>", lambda e: self.BrowseGenOutputDir())
-        
-        ctk.CTkButton(settings_frame, text="Browse", width=80, fg_color=COLORS["bg_secondary"], hover_color=COLORS["border"], command=self.BrowseGenOutputDir).pack(side="left")
+        ctk.CTkLabel(self.history_mode_container, text="Mode:", font=ctk.CTkFont(size=13, weight="bold")).pack(side="left", padx=(0, 10))
+        ctk.CTkOptionMenu(
+            self.history_mode_container, variable=self.output_mode_var, 
+            values=["Global (Textures.zip)", "Car-Specific (Car Mod .zip)"], width=170, 
+            fg_color=COLORS["bg_secondary"], button_color=COLORS["bg_secondary"], 
+            button_hover_color=COLORS["border"], dropdown_fg_color=COLORS["bg_card"], 
+            dropdown_hover_color=COLORS["border"], dropdown_text_color=COLORS["text_primary"], 
+            corner_radius=6, command=self.toggleOutputMode
+        ).pack(side="left", padx=(0, 20))
 
-        # Compile selected button
+        self.history_output_container = ctk.CTkFrame(self.history_settings_frame, fg_color="transparent")
+        self.history_output_label = ctk.CTkLabel(self.history_output_container, text="Output:", font=ctk.CTkFont(size=13, weight="bold"))
+        self.history_output_label.pack(side="left", padx=(0, 10))
+        
+        self.history_dir_entry = ctk.CTkEntry(self.history_output_container, textvariable=self.gen_output_dir_var, fg_color=COLORS["bg_secondary"], border_color=COLORS["border"])
+        self.history_dir_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        self.history_dir_entry.bind("<Button-1>", lambda e: self.browseGenOutputDir())
+        
+        ctk.CTkButton(self.history_output_container, text="Browse", width=80, fg_color=COLORS["bg_secondary"], hover_color=COLORS["border"], command=self.browseGenOutputDir).pack(side="left")
+
         self.cart_btn = ctk.CTkButton(
             self.history_page, 
             text=" COMPILE SELECTED", 
@@ -2318,6 +2587,18 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             font=ctk.CTkFont(size=14, weight="bold")
         )
         self.cart_btn.pack(fill="x", padx=0, pady=(0, 20))
+
+        self.history_restore_btn = ctk.CTkButton(
+            self.history_page, 
+            text=" RESTORE ORIGINALS", 
+            image=self.loadIcon("undo.png", size=18),
+            fg_color=COLORS["bg_card"], 
+            hover_color=COLORS["accent_danger"], 
+            height=40, 
+            width=1200,
+            font=ctk.CTkFont(size=14, weight="bold"), 
+            command=self.runRestore
+        )
         
         self.history_list = ctk.CTkFrame(self.history_page, fg_color="transparent")
         self.history_list.pack(fill="both", expand=True)
@@ -2334,9 +2615,8 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             
             img_path = item.get('img') or item.get('nrml')
             if img_path and os.path.exists(img_path):
-                threading.Thread(target=self.LoadHistoryThumbnail, args=(img_path, img_label), daemon=True).start()
+                threading.Thread(target=self.loadHistoryThumbnail, args=(img_path, img_label), daemon=True).start()
             else:
-                # Fallback icon
                 img_label.configure(image=self.loadIcon("image.png", size=24), text="")
 
             if item.get('is_preset'):
@@ -2354,7 +2634,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             btn_state = "disabled" if is_blocked else "normal"
             btn_color = COLORS["accent_danger"] if is_selected else COLORS["accent_primary"]
             
-            # Remove button
             ctk.CTkButton(
                 card, 
                 text="", 
@@ -2364,9 +2643,8 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                 fg_color="transparent", 
                 hover_color=COLORS["accent_danger"], 
                 command=lambda i=item: self.deleteHistoryItem(i)
-            ).pack(side="right", padx=(0, 10)) # Align remove button
+            ).pack(side="right", padx=(0, 10))
 
-            # Select/Remove Button
             ctk.CTkButton(
                 card, 
                 text=btn_text, 
@@ -2375,7 +2653,7 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                 command=lambda i=item: self.toggleCart(i)
             ).pack(side="right", padx=10)
 
-    def LoadHistoryThumbnail(self, path, label):
+    def loadHistoryThumbnail(self, path, label):
         try:
             pil_img = Image.open(path)
             w, h = pil_img.size
@@ -2384,7 +2662,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             ctk_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(new_w, 40))
             self.after(0, lambda: label.configure(image=ctk_img, text=""))
         except (OSError, ValueError):
-            # Image loading failed, show fallback icon
             self.after(0, lambda: label.configure(image=self.loadIcon("image.png", size=24), text=""))
 
     def toggleCart(self, item):
@@ -2409,10 +2686,10 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             try:
                 if self.cart['eu']: 
                     self.region_var.set("EU & UK")
-                    self.ProcessFiles(self.cart['eu']['img'], self.cart['eu']['nrml'], out_dir, silent=True)
+                    self.processFiles(self.cart['eu']['img'], self.cart['eu']['nrml'], out_dir, silent=True)
                 if self.cart['us']: 
                     self.region_var.set("US & MX")
-                    self.ProcessFiles(self.cart['us']['img'], self.cart['us']['nrml'], out_dir, silent=True)
+                    self.processFiles(self.cart['us']['img'], self.cart['us']['nrml'], out_dir, silent=True)
                 
                 self.after(0, lambda: messagebox.showinfo("Success", "Cart compiled successfully!"))
             except Exception as e:
@@ -2459,7 +2736,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             self.base_slider_frame.pack_forget()
             self.mask_slider_frame.pack(fill="x")
         else:
-            # Fallback to base settings for any unexpected value
             self.mask_slider_frame.pack_forget()
             self.base_slider_frame.pack(fill="x")
             self.mm_tab_var.set("Black")
@@ -2469,7 +2745,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             self.mm_drop_zone.grid(row=0, column=0, sticky="nsew", padx=(0, 5), columnspan=1)
             self.mm_mask_drop_zone.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
 
-            # Split into two buttons for new and edit
             if not hasattr(self, 'mask_btns_frame'):
                 self.mask_btns_frame = ctk.CTkFrame(self.mm_drop_container, fg_color="transparent")
                 
@@ -2481,7 +2756,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
 
             self.mask_btns_frame.grid(row=1, column=0, columnspan=2, pady=(10, 0), sticky="ew")
             
-            # Contextual EU tip
             if not hasattr(self, 'eu_tip_label'):
                 self.eu_tip_label = ctk.CTkLabel(
                     self.mm_drop_container, 
@@ -2500,7 +2774,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             if hasattr(self, 'mask_btns_frame'):
                 self.mask_btns_frame.grid_forget()
                 
-            # Hide the EU tip when Advanced Mode is off
             if hasattr(self, 'eu_tip_label'):
                 self.eu_tip_label.grid_forget()
             
@@ -2508,33 +2781,31 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             self.mm_tab_var.set("Black")
             self.switchMmTabs("Black")
             
-        self.SchedulePreviewUpdate()
+        self.schedulePreviewUpdate()
 
     def launchPreviewInAdobe(self, tool):
         if not self.mm_preview_thumb:
             messagebox.showwarning("Warning", "No preview image to open!")
             return
 
-        def Task():
+        def task():
             try:
                 exe = self.ps_path_var.get().strip('"') if tool == "photoshop" else self.ai_path_var.get().strip('"')
                 
                 img_path = self.mm_drop_zone.getPath()
                 if not img_path: return
                 
-                # Get current settings
                 b_str, b_blur, b_dir = self.base_intensity.get(), self.base_blur.get(), self.base_extrude.get()
                 m_str, m_blur, m_dir = self.mask_intensity.get(), self.mask_blur.get(), self.mask_extrude.get()
                 mask_path = self.mm_mask_drop_zone.getPath() if self.advanced_mode_var.get() else None
                 
-                # Load the full resolution source image
                 source_img = Image.open(img_path)
                 
-                base_map = self.CreateNormalMapData(source_img, b_str, b_blur, b_dir)
+                base_map = self.createNormalMapData(source_img, b_str, b_blur, b_dir)
                 
                 if mask_path and os.path.exists(mask_path):
                     mask_img = Image.open(mask_path).convert('L').resize(base_map.size)
-                    mask_map = self.CreateNormalMapData(source_img, m_str, m_blur, m_dir)
+                    mask_map = self.createNormalMapData(source_img, m_str, m_blur, m_dir)
                     final_img = Image.composite(mask_map, base_map, mask_img)
                 else:
                     final_img = base_map
@@ -2549,15 +2820,15 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             except Exception as e: 
                 self.after(0, lambda: messagebox.showerror("Error", f"Failed to launch {tool}: {e}"))
 
-        threading.Thread(target=Task, daemon=True).start()
+        threading.Thread(target=task, daemon=True).start()
 
     def checkForUpdates(self, manual=False):
-        def SetStatus(online):
+        def setStatus(online):
             self.is_online = online
             if hasattr(self, 'status_text'):
                 self.status_text.configure(text=" ONLINE" if online else " OFFLINE")
 
-        def Task():
+        def task():
             try:
                 import requests
                 import webbrowser
@@ -2567,7 +2838,7 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                 response = requests.get(api_url, timeout=5)
                 
                 if response.status_code == 200:
-                    self.after(0, lambda: SetStatus(True))
+                    self.after(0, lambda: setStatus(True))
                     
                     data = response.json()
                     latest_tag = data.get("tag_name", f"v{APP_VERSION}")
@@ -2588,19 +2859,15 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                             x, y = self.winfo_rootx(), self.winfo_rooty()
                             w, h = self.winfo_width(), self.winfo_height()
 
-                            # Snapshot the app, blur it, and darken it
                             try:
                                 screen = ImageGrab.grab(bbox=(x, y, x + w, y + h))
-                                # Apply blur
                                 blurred = screen.filter(ImageFilter.GaussianBlur(radius=6))
                                 darkened = ImageEnhance.Brightness(blurred).enhance(0.6)
                                 
-                                # Use CTkImage for HighDPI support
                                 self.overlay_bg = ctk.CTkImage(light_image=darkened, dark_image=darkened, size=(w, h))
                             except Exception:
                                 self.overlay_bg = None
 
-                            # Create the overlay
                             overlay = ctk.CTkToplevel(self)
                             overlay.overrideredirect(True)
                             overlay.geometry(f"{w}x{h}+{x}+{y}")
@@ -2613,7 +2880,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                                 overlay.attributes('-alpha', 0.7)
                                 overlay.configure(fg_color="#000000")
                             
-                            # Create the dialog
                             dialog = ctk.CTkToplevel(self)
                             dialog.overrideredirect(True)
                             dialog.configure(fg_color=COLORS["border"])
@@ -2633,7 +2899,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                                     HWND = windll.user32.GetParent(dialog.winfo_id())
                                     windll.dwmapi.DwmSetWindowAttribute(HWND, 33, byref(c_int(2)), sizeof(c_int(2)))
                                 except (AttributeError, OSError):
-                                    # DWM API not available, continue without rounded corners
                                     pass
 
                             container = ctk.CTkFrame(dialog, fg_color=COLORS["bg_secondary"], corner_radius=0, border_width=0)
@@ -2660,7 +2925,7 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                                         break
                                 
                                 if exe_url:
-                                    threading.Thread(target=self.ExecuteAutoUpdate, args=(exe_url,), daemon=True).start()
+                                    threading.Thread(target=self.executeAutoUpdate, args=(exe_url,), daemon=True).start()
                                 else:
                                     messagebox.showerror("Error", "Could not find the .exe file in the latest release.")
 
@@ -2676,17 +2941,17 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                     elif manual:
                         self.after(0, lambda: messagebox.showinfo("Up to Date", "You are running the latest version."))
                 else:
-                    self.after(0, lambda: SetStatus(False)) # Set Offline on bad status code
+                    self.after(0, lambda: setStatus(False))
                     if manual:
                         self.after(0, lambda: messagebox.showerror("Update Error", "Could not connect to GitHub."))
             except Exception as e:
-                self.after(0, lambda: SetStatus(False)) # Set Offline on crash/no internet
+                self.after(0, lambda: setStatus(False))
                 if manual: self.after(0, lambda err=e: messagebox.showerror("Update Error", f"An error occurred: {err}"))
 
         import threading
-        threading.Thread(target=Task, daemon=True).start()
+        threading.Thread(target=task, daemon=True).start()
 
-    def ExecuteAutoUpdate(self, download_url):
+    def executeAutoUpdate(self, download_url):
         try:
             self.after(0, lambda: self.btn_update.configure(text="Preparing...", state="disabled"))
             
@@ -2703,15 +2968,12 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             current_exe = sys.executable
             base_dir = os.path.dirname(current_exe)
             
-            # Generate a unique old_exe name
             old_exe_name = f"PlateCompiler_old_{int(time.time())}.exe"
             old_exe = os.path.join(base_dir, old_exe_name)
             new_exe = os.path.join(base_dir, "PlateCompiler.exe")
 
-            # Rename the running app to free up the filename
             os.rename(current_exe, old_exe)
 
-            # Download the new version with progress tracking
             self.after(0, lambda: self.btn_update.configure(text="Downloading 0%..."))
             
             response = requests.get(download_url, stream=True, timeout=30)
@@ -2734,7 +2996,6 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
 
             self.after(0, lambda: self.btn_update.configure(text="Installing..."))
 
-            # Create the updater batch script to launch the app cleanly
             bat_path = os.path.join(base_dir, "update_cleanup.bat")
             bat_content = f"""@echo off
 timeout /t 3 /nobreak > NUL
@@ -2745,7 +3006,6 @@ del "%~f0"
             with open(bat_path, "w") as f:
                 f.write(bat_content)
 
-            # Launch the batch file
             CREATE_NO_WINDOW = 0x08000000
             subprocess.Popen(["cmd.exe", "/c", "update_cleanup.bat"], cwd=base_dir, creationflags=CREATE_NO_WINDOW)
 
@@ -2766,61 +3026,53 @@ del "%~f0"
         header = ctk.CTkLabel(self.editor_page, text="Plate Designer", font=ctk.CTkFont(family="Ubuntu", size=32, weight="bold"))
         header.pack(anchor="w", pady=(0, 20))
 
-        # Controls
         controls_frame = ctk.CTkFrame(self.editor_page, fg_color=COLORS["bg_secondary"], corner_radius=12)
         controls_frame.pack(fill="x", pady=(0, 20), ipadx=20, ipady=20)
 
         self.state_var = ctk.StringVar(value="Utah (Black)")
         ctk.CTkLabel(controls_frame, text="Select State Template:", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=20, pady=(10, 5))
-        self.state_dropdown = ctk.CTkOptionMenu(controls_frame, variable=self.state_var, values=list(PLATE_TEMPLATES.keys()), command=self.OnStateChange)
+        self.state_dropdown = ctk.CTkOptionMenu(controls_frame, variable=self.state_var, values=list(PLATE_TEMPLATES.keys()), command=self.onStateChange)
         self.state_dropdown.pack(fill="x", padx=20)
 
         self.plate_text_var = ctk.StringVar(value="EXAMPLE")
         self.char_limit_label = ctk.CTkLabel(controls_frame, text="Plate Text (Max 8 chars):", font=ctk.CTkFont(weight="bold"))
         self.char_limit_label.pack(anchor="w", padx=20, pady=(15, 5))
         
-        self.plate_text_var.trace_add("write", self.OnTextChange)
+        self.plate_text_var.trace_add("write", self.onTextChange)
         self.text_entry = ctk.CTkEntry(controls_frame, textvariable=self.plate_text_var, font=ctk.CTkFont(size=16), height=40)
         self.text_entry.pack(fill="x", padx=20, pady=(0, 10))
 
-        # Registration Tags Toggle
         self.show_tags_var = ctk.BooleanVar(value=True)
         self.tags_switch = ctk.CTkSwitch(
             controls_frame, 
             text="Show Registration Tags", 
             variable=self.show_tags_var, 
-            command=self.UpdateEditorPreview, 
+            command=self.updateEditorPreview, 
             button_color=COLORS["accent_primary"]
         )
         self.tags_switch.pack(anchor="w", padx=20, pady=(10, 0))
 
-        # Outline toggle
         self.show_outline_var = ctk.BooleanVar(value=True)
         self.outline_switch = ctk.CTkSwitch(
             controls_frame, 
             text="Outline", 
             variable=self.show_outline_var, 
-            command=self.UpdateEditorPreview, 
+            command=self.updateEditorPreview, 
             button_color=COLORS["accent_primary"]
         )
 
-
-
-        # COBB overlay toggle
         self.show_cobb_var = ctk.BooleanVar(value=True)
         self.cobb_switch = ctk.CTkSwitch(
             controls_frame, 
             text="COBB Logo", 
             variable=self.show_cobb_var, 
-            command=self.UpdateEditorPreview, 
+            command=self.updateEditorPreview, 
             button_color=COLORS["accent_primary"]
         )
 
-        # Preview Area
         self.editor_preview_label = ctk.CTkLabel(self.editor_page, text="Loading Preview...")
         self.editor_preview_label.pack(pady=20)
 
-        # Export plate button
         self.btn_save_custom = ctk.CTkButton(
             self.editor_page, 
             text=" EXPORT PLATE", 
@@ -2829,11 +3081,10 @@ del "%~f0"
             height=50, 
             width=1200,
             font=ctk.CTkFont(size=14, weight="bold"),
-            command=self.SaveCustomPlate
+            command=self.saveCustomPlate
         )
         self.btn_save_custom.pack(fill="x", padx=0, pady=(20, 10)) # Adjust padding
 
-        # Open in map maker button
         self.btn_send_to_mm = ctk.CTkButton(
             self.editor_page, 
             text=" OPEN IN 3D MAP MAKER", 
@@ -2842,55 +3093,48 @@ del "%~f0"
             height=50, 
             width=1200,
             font=ctk.CTkFont(size=14, weight="bold"),
-            command=self.SendToMapMaker
+            command=self.sendToMapMaker
         )
         self.btn_send_to_mm.pack(fill="x", padx=0, pady=(0, 20))
 
-        # Initial render to check default state toggles
-        self.OnStateChange(self.state_var.get())
+        self.onStateChange(self.state_var.get())
 
-    def OnStateChange(self, choice):
+    def onStateChange(self, choice):
         config = PLATE_TEMPLATES.get(choice)
         if not config: return
 
-        # Update the character limit label
         char_limit = 10 if "EU" in choice else 8
         if hasattr(self, 'char_limit_label'):
             self.char_limit_label.configure(text=f"Plate Text (Max {char_limit} chars):")
 
-        # Hide all switches to reset their order
         self.tags_switch.pack_forget()
         self.outline_switch.pack_forget()
         self.cobb_switch.pack_forget()
 
-        # Check and show tags toggle 
         if config.get("has_tags_option", True):
             self.show_tags_var.set(True)
             self.tags_switch.pack(anchor="w", padx=20, pady=(10, 0))
         else:
             self.show_tags_var.set(False) 
 
-        # Check and show outline toggle
         if config.get("has_outline_option"):
             self.show_outline_var.set(True)
             self.outline_switch.pack(anchor="w", padx=20, pady=(10, 0))
         else:
             self.show_outline_var.set(False)
 
-        # Check and show COBB toggle
         if config.get("has_cobb_option"):
             self.show_cobb_var.set(True)
             self.cobb_switch.pack(anchor="w", padx=20, pady=(10, 0))
         else:
             self.show_cobb_var.set(False)
             
-        self.UpdateEditorPreview()
+        self.updateEditorPreview()
 
-    def OnTextChange(self, *args):
+    def onTextChange(self, *args):
         text = self.plate_text_var.get().upper()
         selected_state = self.state_var.get()
         
-        # Set limit to 10 if "EU" is in the template name, otherwise 8
         char_limit = 10 if "EU" in selected_state else 8
         
         if len(text) > char_limit:
@@ -2900,9 +3144,9 @@ del "%~f0"
         
         if hasattr(self, '_render_job') and self._render_job:
             self.after_cancel(self._render_job)
-        self._render_job = self.after(300, self.UpdateEditorPreview)
+        self._render_job = self.after(300, self.updateEditorPreview)
 
-    def GeneratePlateImage(self):
+    def generatePlateImage(self):
         state = self.state_var.get()
         text = self.plate_text_var.get()
         config = PLATE_TEMPLATES.get(state)
@@ -2910,7 +3154,6 @@ del "%~f0"
         if not config:
             return None
 
-        # Figure out which image key to use based on the toggles
         has_tags = getattr(self, "show_tags_var", ctk.BooleanVar(value=True)).get()
         has_outline = config.get("has_outline_option") and getattr(self, "show_outline_var", ctk.BooleanVar(value=False)).get()
 
@@ -2923,28 +3166,23 @@ del "%~f0"
         else:
             image_key = "image_no_tags"
 
-        # Wrap the image path
         image_path = resourcePath(config.get(image_key))
         
         if not image_path or not os.path.exists(image_path):
             return None
 
         try:
-            # Load the selected base image
             base_img = Image.open(image_path).convert("RGBA")
 
-            # Paste the COBB overlay if toggled
             if config.get("has_cobb_option") and getattr(self, "show_cobb_var", ctk.BooleanVar(value=False)).get():
                 cobb_path = resourcePath(config.get("cobb_overlay"))
                 if cobb_path and os.path.exists(cobb_path):
                     cobb_img = Image.open(cobb_path).convert("RGBA")
                     coords = config.get("cobb_coords", (0, 0))
-                    # The third argument is the mask, which keeps the transparent background transparent
                     base_img.paste(cobb_img, coords, cobb_img)
 
             draw = ImageDraw.Draw(base_img)
             
-            # Wrap the font path
             font_path = resourcePath(config["font_file"])
             try:
                 font = ImageFont.truetype(font_path, config["font_size"])
@@ -2966,10 +3204,9 @@ del "%~f0"
             print(f"Render error: {e}")
             return None
 
-    def UpdateEditorPreview(self, *args):
-        img = self.GeneratePlateImage()
+    def updateEditorPreview(self, *args):
+        img = self.generatePlateImage()
         if img:
-            # Scale down for the UI preview
             w, h = img.size
             aspect = h / w
             preview_w = 400
@@ -2980,13 +3217,13 @@ del "%~f0"
         else:
             self.editor_preview_label.configure(text="Missing template image.", image="")
 
-    def SaveCustomPlate(self):
-        img = self.GeneratePlateImage()
+    def saveCustomPlate(self):
+        img = self.generatePlateImage()
         if not img:
             messagebox.showerror("Error", "Could not generate plate.")
             return
             
-        initial_dir = self.last_dirs.get("editor_out", "/") # Use specific memory key for map maker export directory
+        initial_dir = self.last_dirs.get("editor_out", "/")
         save_path = filedialog.asksaveasfilename(
             defaultextension=".png",
             filetypes=[("PNG Image", "*.png")],
@@ -2995,40 +3232,33 @@ del "%~f0"
         )
         
         if save_path:
-            # Remember export directory
             self.last_dirs["editor_out"] = os.path.dirname(save_path)
             self.saveConfig(silent=True)
             
             img.save(save_path, format="PNG")
             messagebox.showinfo("Success", f"Plate saved to:\n{save_path}")
 
-    def SendToMapMaker(self):
-        img = self.GeneratePlateImage()
+    def sendToMapMaker(self):
+        img = self.generatePlateImage()
         if not img:
             messagebox.showerror("Error", "Could not generate plate.")
             return
 
-        # Use a normalized path to ensure the system finds the file correctly
         temp_path = os.path.normpath(os.path.join(tempfile.gettempdir(), "varsinity_designer_transfer.png"))
         img.save(temp_path)
 
-        # Update the path entry
         self.mm_drop_zone.path_entry.delete(0, "end")
         self.mm_drop_zone.path_entry.insert(0, temp_path)
         
-        # Update the visual icon in the drop zone
         self.mm_drop_zone.updatePreview(temp_path)
         self.mm_drop_zone.configure(border_color=COLORS["accent_success"])
 
-        # Load the preview and switch tabs
-        self.LoadPreviewImage(temp_path)
+        self.loadPreviewImage(temp_path)
         self.showPage("map_maker")
         
-        # Force a refresh after the tab animation finishes
-        # This re-links the sliders to the new thumbnail image
-        self.after(350, self.SchedulePreviewUpdate)
+        self.after(350, self.schedulePreviewUpdate)
 
-    def SendMapToCompiler(self):
+    def sendMapToCompiler(self):
         source_path = self.mm_drop_zone.getPath()
         if not source_path or not os.path.exists(source_path):
             messagebox.showerror("Error", "No source image found in Map Maker!")
@@ -3037,16 +3267,13 @@ del "%~f0"
         if not hasattr(self, 'last_mm_map') or not os.path.exists(self.last_mm_map):
             self.mm_status_label.configure(text="⏳ Generating high-res map...", text_color=COLORS["accent_secondary"])
             
-            # Use a temp path for the generated map
             map_path = os.path.normpath(os.path.join(tempfile.gettempdir(), "generated_compiler_map.png"))
             
-            # Re-use your existing generation logic to save a high-res copy
             img = Image.open(source_path)
-            final_map = self.CreateNormalMapData(img, self.base_intensity.get(), self.base_blur.get(), self.base_extrude.get())
+            final_map = self.createNormalMapData(img, self.base_intensity.get(), self.base_blur.get(), self.base_extrude.get())
             final_map.save(map_path)
             self.last_mm_map = map_path
 
-        # Auto-detect target region
         try:
             img = Image.open(source_path)
             ratio = img.size[0] / img.size[1]
@@ -3056,9 +3283,8 @@ del "%~f0"
             self.region_var.set(target_region)
             self.updateDropzoneRegions()
         except Exception:
-            pass # Failsafe in case the image is corrupted
+            pass
 
-        # Inject into Compiler Drop Zones
         self.image_drop_zone.path_entry.delete(0, "end")
         self.image_drop_zone.path_entry.insert(0, source_path)
         self.image_drop_zone.updatePreview(source_path)
@@ -3067,7 +3293,6 @@ del "%~f0"
         self.nrml_drop_zone.path_entry.insert(0, self.last_mm_map)
         self.nrml_drop_zone.updatePreview(self.last_mm_map)
 
-        # Finish up
         self.image_drop_zone.configure(border_color=COLORS["accent_success"])
         self.nrml_drop_zone.configure(border_color=COLORS["accent_success"])
         self.showPage("compiler")
@@ -3087,28 +3312,46 @@ del "%~f0"
         self.preset_cart_status = ctk.CTkLabel(self.presets_page, text="No Presets Selected", font=ctk.CTkFont(size=14), text_color=COLORS["accent_primary"])
         self.preset_cart_status.pack(anchor="w", pady=(0, 10))
 
-        settings_frame = ctk.CTkFrame(self.presets_page, fg_color="transparent")
-        settings_frame.pack(fill="x", pady=(0, 15))
+        self.preset_settings_frame = ctk.CTkFrame(self.presets_page, fg_color="transparent")
+        self.preset_settings_frame.pack(fill="x", pady=(0, 15))
 
-        ctk.CTkLabel(settings_frame, text="Version:", font=ctk.CTkFont(size=13, weight="bold")).pack(side="left", padx=(0, 10))
+        self.preset_top_row = ctk.CTkFrame(self.preset_settings_frame, fg_color="transparent")
+        self.preset_top_row.pack(fill="x")
+
+        self.preset_bottom_row = ctk.CTkFrame(self.preset_settings_frame, fg_color="transparent")
+
+        ctk.CTkLabel(self.preset_top_row, text="Version:", font=ctk.CTkFont(size=13, weight="bold")).pack(side="left", padx=(0, 10))
         
         ctk.CTkOptionMenu(
-            settings_frame, variable=self.version_var, values=["Latest (Direct Zip)", "1.634.818.0"], 
+            self.preset_top_row, variable=self.version_var, values=["Latest (Direct Zip)", "1.634.818.0"], 
             width=170, fg_color=COLORS["bg_secondary"], button_color=COLORS["bg_secondary"], 
             button_hover_color=COLORS["border"], dropdown_fg_color=COLORS["bg_card"], 
             dropdown_hover_color=COLORS["border"], dropdown_text_color=COLORS["text_primary"], 
-            corner_radius=6, command=lambda _: self.saveConfig(silent=True)
+            corner_radius=6, command=lambda v: (self.toggleHelpText(v), self.saveConfig(silent=True))
         ).pack(side="left", padx=(0, 20))
 
-        ctk.CTkLabel(settings_frame, text="Output:", font=ctk.CTkFont(size=13, weight="bold")).pack(side="left", padx=(0, 10))
+        self.preset_mode_container = ctk.CTkFrame(self.preset_top_row, fg_color="transparent")
         
-        self.preset_dir_entry = ctk.CTkEntry(settings_frame, textvariable=self.gen_output_dir_var, fg_color=COLORS["bg_secondary"], border_color=COLORS["border"])
-        self.preset_dir_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
-        self.preset_dir_entry.bind("<Button-1>", lambda e: self.BrowseGenOutputDir())
-        
-        ctk.CTkButton(settings_frame, text="Browse", width=80, fg_color=COLORS["bg_secondary"], hover_color=COLORS["border"], command=self.BrowseGenOutputDir).pack(side="left")
+        ctk.CTkLabel(self.preset_mode_container, text="Mode:", font=ctk.CTkFont(size=13, weight="bold")).pack(side="left", padx=(0, 10))
+        ctk.CTkOptionMenu(
+            self.preset_mode_container, variable=self.output_mode_var, 
+            values=["Global (Textures.zip)", "Car-Specific (Car Mod .zip)"], width=170, 
+            fg_color=COLORS["bg_secondary"], button_color=COLORS["bg_secondary"], 
+            button_hover_color=COLORS["border"], dropdown_fg_color=COLORS["bg_card"], 
+            dropdown_hover_color=COLORS["border"], dropdown_text_color=COLORS["text_primary"], 
+            corner_radius=6, command=self.toggleOutputMode
+        ).pack(side="left", padx=(0, 20))
 
-        # Compile presets button
+        self.preset_output_container = ctk.CTkFrame(self.preset_settings_frame, fg_color="transparent")
+        self.preset_output_label = ctk.CTkLabel(self.preset_output_container, text="Output:", font=ctk.CTkFont(size=13, weight="bold"))
+        self.preset_output_label.pack(side="left", padx=(0, 10))
+        
+        self.preset_dir_entry = ctk.CTkEntry(self.preset_output_container, textvariable=self.gen_output_dir_var, fg_color=COLORS["bg_secondary"], border_color=COLORS["border"])
+        self.preset_dir_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        self.preset_dir_entry.bind("<Button-1>", lambda e: self.browseGenOutputDir())
+        
+        ctk.CTkButton(self.preset_output_container, text="Browse", width=80, fg_color=COLORS["bg_secondary"], hover_color=COLORS["border"], command=self.browseGenOutputDir).pack(side="left")
+
         self.preset_cart_btn = ctk.CTkButton(
             self.presets_page, 
             text=" COMPILE PRESETS", 
@@ -3120,17 +3363,27 @@ del "%~f0"
             font=ctk.CTkFont(size=14, weight="bold")
         )
         self.preset_cart_btn.pack(fill="x", padx=0, pady=(0, 20))
+
+        self.preset_restore_btn = ctk.CTkButton(
+            self.presets_page, 
+            text=" RESTORE ORIGINALS", 
+            image=self.loadIcon("undo.png", size=18),
+            fg_color=COLORS["bg_card"], 
+            hover_color=COLORS["accent_danger"], 
+            height=40, 
+            width=0,
+            font=ctk.CTkFont(size=14, weight="bold"), 
+            command=self.runRestore
+        )
         
         self.presets_list = ctk.CTkFrame(self.presets_page, fg_color="transparent")
         self.presets_list.pack(fill="both", expand=True)
         self.presets_list.grid_columnconfigure(0, weight=1)
         self.presets_list.grid_columnconfigure(1, weight=1)
 
-        # Build the list once at startup
         self.refreshPresets()
 
     def refreshPresets(self, force=False):
-        # If not forcing a reload and widgets already exist, stop here
         if not force and self.presets_list.winfo_children():
             return
             
@@ -3148,15 +3401,13 @@ del "%~f0"
             img_label.pack(pady=(20, 10), padx=10, fill="both", expand=True)
             
             img_path = item.get('img')
-            # Check cache immediately on the main thread
             if img_path in self.image_cache:
                 img_label.configure(image=self.image_cache[img_path], text="")
             elif img_path and os.path.exists(img_path):
-                threading.Thread(target=self.LoadPresetPreview, args=(img_path, img_label, item['region']), daemon=True).start()
+                threading.Thread(target=self.loadPresetPreview, args=(img_path, img_label, item['region']), daemon=True).start()
             else:
                 img_label.configure(image=self.loadIcon("image.png", size=32), text="")
 
-            # Stacked text in the middle
             ctk.CTkLabel(card, text=item['name'], font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(0, 2))
             ctk.CTkLabel(card, text=item['region'], font=ctk.CTkFont(size=12), text_color=COLORS["text_secondary"]).pack(pady=(0, 15))
             
@@ -3170,34 +3421,31 @@ del "%~f0"
             
             ctk.CTkButton(card, text=btn_text, state=btn_state, fg_color=btn_color, command=lambda i=item: self.togglePresetCart(i)).pack(pady=(0, 20), padx=20, fill="x")
 
-            # Wrap to the next row after 2 columns
             col_idx += 1
             if col_idx > 1:
                 col_idx = 0
                 row_idx += 1
 
-    def LoadPresetPreview(self, path, label, region):
-        def BackgroundTask():
+    def loadPresetPreview(self, path, label, region):
+        def backgroundtask():
             try:
                 with open(path, "rb") as f:
                     img_data = f.read()
             
-                # Process the image in the background to keep the app fast
                 pil_img = Image.open(io.BytesIO(img_data)).convert("RGBA")
                 w, h = pil_img.size
                 target_w = 250 if "EU" in region else 200
                 target_h = int(target_w * (h / w))
                 pil_img.thumbnail((target_w, target_h), Image.LANCZOS)
 
-                # Put the UI update into the queue
-                self.ui_queue.put(lambda: self.FinalizePresetUi(pil_img, path, label))
+                self.ui_queue.put(lambda: self.finalizePresetUI(pil_img, path, label))
             
             except Exception as e:
                 print(f"Background disk error for {path}: {e}")
 
-        threading.Thread(target=BackgroundTask, daemon=True).start()
+        threading.Thread(target=backgroundtask, daemon=True).start()
 
-    def FinalizePresetUi(self, pil_img, path, label):
+    def finalizePresetUI(self, pil_img, path, label):
         try:
             if label.winfo_exists():
                 ctk_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=pil_img.size)
@@ -3206,13 +3454,12 @@ del "%~f0"
         except Exception as e:
             print(f"UI Update error: {e}")
 
-    def HandlePresetError(self, label):
+    def handlePresetError(self, label):
         try:
             if label.winfo_exists():
                 error_icon = self.loadIcon("image.png", size=32)
                 label.configure(image=error_icon, text="")
         except (AttributeError, Exception):
-            # Error handling failed, continue without error icon
             pass
 
     def toggleCart(self, item):
@@ -3236,7 +3483,6 @@ del "%~f0"
         us_name = self.preset_cart['us']['name'] if self.preset_cart['us'] else "None"
         self.preset_cart_status.configure(text=f"EU: {eu_name}  |  US: {us_name}")
         
-        # Force the UI to rebuild to update button state
         self.refreshPresets(force=True)
 
     def compilePresets(self):
@@ -3254,31 +3500,28 @@ del "%~f0"
                 
                 if self.preset_cart['eu']: 
                     self.region_var.set("EU & UK")
-                    self.ProcessFiles(self.preset_cart['eu']['img'], self.preset_cart['eu']['nrml'], out_dir, silent=True)
-                    # Add to history
+                    self.processFiles(self.preset_cart['eu']['img'], self.preset_cart['eu']['nrml'], out_dir, silent=True)
                     self.history.append({
                         "region": "EU & UK", 
                         "img": self.preset_cart['eu']['img'], 
                         "nrml": self.preset_cart['eu']['nrml'],
-                        "name": self.preset_cart['eu']['name'], # Preset name
-                        "is_preset": True # Preset flag
+                        "name": self.preset_cart['eu']['name'],
+                        "is_preset": True
                     })
                     added_to_history = True
                     
                 if self.preset_cart['us']: 
                     self.region_var.set("US & MX")
-                    self.ProcessFiles(self.preset_cart['us']['img'], self.preset_cart['us']['nrml'], out_dir, silent=True)
-                    # Add to history
+                    self.processFiles(self.preset_cart['us']['img'], self.preset_cart['us']['nrml'], out_dir, silent=True)
                     self.history.append({
                         "region": "US & MX", 
                         "img": self.preset_cart['us']['img'], 
                         "nrml": self.preset_cart['us']['nrml'],
-                        "name": self.preset_cart['us']['name'], # Preset name
-                        "is_preset": True # Preset flag
+                        "name": self.preset_cart['us']['name'],
+                        "is_preset": True
                     })
                     added_to_history = True
                 
-                # Save the new history data if a preset was compiled
                 if added_to_history:
                     self.saveConfig(silent=True)
                 
@@ -3291,7 +3534,6 @@ del "%~f0"
         threading.Thread(target=process, daemon=True).start()
 
     def setupDashboardPage(self):
-        # Header
         header = ctk.CTkLabel(
             self.dashboard_page, 
             text="Welcome back! ", 
@@ -3302,13 +3544,11 @@ del "%~f0"
         )
         header.pack(anchor="w", pady=(0, 20))
 
-        # Stats Cards
         stats_frame = ctk.CTkFrame(self.dashboard_page, fg_color="transparent")
         stats_frame.pack(fill="x", pady=(0, 20))
         stats_frame.grid_columnconfigure(0, weight=1)
         stats_frame.grid_columnconfigure(1, weight=1)
 
-        # Active Compiler Settings Card
         self.stat_settings = ctk.CTkFrame(stats_frame, fg_color=COLORS["bg_secondary"], corner_radius=12, border_width=1, border_color=COLORS["border"])
         self.stat_settings.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
         settings_inner = ctk.CTkFrame(self.stat_settings, fg_color="transparent")
@@ -3316,7 +3556,6 @@ del "%~f0"
         
         ctk.CTkLabel(settings_inner, text="Compiler Settings", font=ctk.CTkFont(weight="bold"), text_color=COLORS["text_secondary"]).pack(anchor="w", pady=(0, 10))
         
-        # Grid for settings
         set_grid = ctk.CTkFrame(settings_inner, fg_color="transparent")
         set_grid.pack(fill="x")
         set_grid.columnconfigure(1, weight=1)
@@ -3335,11 +3574,10 @@ del "%~f0"
         ctk.CTkLabel(set_grid, text="Create Backups:", font=ctk.CTkFont(size=13)).grid(row=2, column=0, sticky="w", pady=2)
         self.dash_backup_switch = ctk.CTkSwitch(
             set_grid, text="", variable=self.create_backups_var, width=35,
-            button_color=COLORS["accent_primary"], command=lambda: self.saveConfig(silent=True)
+            button_color=COLORS["accent_primary"], command=self.toggleBackups
         )
         self.dash_backup_switch.grid(row=2, column=1, sticky="e", pady=2)
 
-        # System Health Card 
         self.stat_health = ctk.CTkFrame(stats_frame, fg_color=COLORS["bg_secondary"], corner_radius=12, border_width=1, border_color=COLORS["border"])
         self.stat_health.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
         health_inner = ctk.CTkFrame(self.stat_health, fg_color="transparent")
@@ -3363,7 +3601,6 @@ del "%~f0"
         self.health_sz_status = ctk.CTkLabel(status_grid, text="--", font=ctk.CTkFont(size=13, weight="bold"))
         self.health_sz_status.grid(row=2, column=1, sticky="e", pady=2) 
 
-        # Quick Start Guide
         guide_frame = ctk.CTkFrame(self.dashboard_page, fg_color="transparent")
         guide_frame.pack(fill="x", pady=(10, 20))
         
@@ -3377,7 +3614,6 @@ del "%~f0"
         )
         ctk.CTkLabel(guide_frame, text=guide_text, font=ctk.CTkFont(size=13), text_color=COLORS["text_secondary"], justify="left").pack(anchor="w", padx=(10, 0))
 
-        # Active Plates
         ctk.CTkLabel(self.dashboard_page, text="Active Plates", font=ctk.CTkFont(size=18, weight="bold")).pack(anchor="w", pady=(10, 10))
         self.active_plates_frame = ctk.CTkFrame(self.dashboard_page, fg_color="transparent")
         self.active_plates_frame.pack(fill="x")
@@ -3390,7 +3626,6 @@ del "%~f0"
         self.active_us_label = ctk.CTkLabel(self.active_plates_frame, text="Loading US...", height=80, fg_color=COLORS["bg_secondary"], corner_radius=12)
         self.active_us_label.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
 
-        # Changelog
         ctk.CTkLabel(
             self.dashboard_page, 
             text=f"Recent Additions (v{APP_VERSION})", 
@@ -3402,32 +3637,24 @@ del "%~f0"
         self.changelog_frame.grid_columnconfigure(1, weight=1)
 
         changes = [
-            ("New Buttons", "Added 'Send to Compiler' and 'Open in Map Maker' shortcut buttons to quickly jump between tabs without saving files manually."),
-            ("Window Animations", "The app now fades in and out when opening or closing."),
-            ("Built-In 7-Zip", "7-Zip is now fully integrated. If your custom path breaks or is missing, the app automatically falls back to a bundled portable version."),
-            ("UI & Icon Updates", "Replaced outdated emojis high quality icons. Added better guidance across the app."),
-            ("Performance Optimizations", "The Presets tab now loads without flickering every time you click it. Taskbar icon caching was also rewritten in turn. Although the page switching looks glitchy and I don't know of any ways to fix it due to Tkinter's limitations."),
-            ("Revamped Auto-Updater", "The app will now automatically download the latest, clean up the old executable, and restart itself upon user consent."),
-            ("Toggle Page Transitions", "Added a toggle to turn the buggy page transitions on or off.")
+            ("New Car-Specific Output Mode", "Added a new mode in the Presets page that allows you to compile plates into one specific car instead of doing it globally."),
+            ("New Remove Buttons", "Added remove buttons to all dropboxes."),
+            ("Fixed Small UI Bugs", "Resolved several minor UI issues across the application.")
         ]
 
         for idx, (title, desc) in enumerate(changes):
             ctk.CTkLabel(self.changelog_frame, text=f"• {title}:", font=ctk.CTkFont(size=13, weight="bold"), text_color=COLORS["accent_primary"]).grid(row=idx, column=0, sticky="nw", padx=(15, 10), pady=8)
             ctk.CTkLabel(self.changelog_frame, text=desc, font=ctk.CTkFont(size=13), text_color=COLORS["text_secondary"], justify="left", wraplength=370).grid(row=idx, column=1, sticky="nw", padx=(0, 15), pady=8)
 
-        # Recent Activity
         ctk.CTkLabel(self.dashboard_page, text="Recent Activity", font=ctk.CTkFont(size=18, weight="bold")).pack(anchor="w", pady=(20, 10))
         self.dash_history_list = ctk.CTkFrame(self.dashboard_page, fg_color="transparent")
         self.dash_history_list.pack(fill="both", expand=True)
 
     def refreshDashboard(self):
-        # Active settings check
         comp_val = self.comp_level_var.get()
-        # Clean up the text to say "Normal"
         clean_comp = comp_val.split(" ")[0] if " " in comp_val else comp_val
         self.dash_comp_label.configure(text=clean_comp)
         
-        # System health check
         checks = [
             (self.ps_path_var.get().strip('"'), self.health_ps_status),
             (self.ai_path_var.get().strip('"'), self.health_ai_status),
@@ -3437,7 +3664,6 @@ del "%~f0"
         for path, label in checks:
             exists = os.path.exists(path) if path else False
             
-            # If the primary 7-Zip path is missing, check the portable fallback
             if label == self.health_sz_status and not exists:
                 exists = os.path.exists(resourcePath("7za.exe"))
 
@@ -3446,9 +3672,8 @@ del "%~f0"
             
             label.configure(text=status_text, text_color=status_color)
 
-        threading.Thread(target=self.LoadActivePlates, daemon=True).start()
+        threading.Thread(target=self.loadActivePlates, daemon=True).start()
 
-        # Update Recent Activity List
         for widget in self.dash_history_list.winfo_children(): widget.destroy()
         recent_items = list(reversed(self.history))[:3] 
         if not recent_items:
@@ -3472,11 +3697,9 @@ del "%~f0"
             
         last = self.history[-1]
         
-        # Set the region toggle
         self.region_var.set(last["region"])
         self.updateDropzoneRegions()
         
-        # Check if the images still exist on the user's computer, then load them in
         img = last.get("img", "")
         if img and os.path.exists(img):
             self.image_drop_zone.path_entry.delete(0, "end")
@@ -3491,7 +3714,6 @@ del "%~f0"
             self.nrml_drop_zone.updatePreview(nrml)
             self.nrml_drop_zone.configure(border_color=COLORS["accent_success"])
             
-        # Swap to the compiler page
         self.showPage("compiler")
 
     def promptClearBackups(self):
@@ -3499,13 +3721,12 @@ del "%~f0"
         if not target_zip: return
         
         if messagebox.askyesno("Confirm", "This will search the 'plates' folder inside this zip and delete ALL backup (.bak) files.\n\nContinue?"):
-            threading.Thread(target=self.ProcessClearBackups, args=(target_zip,), daemon=True).start()
+            threading.Thread(target=self.processClearBackups, args=(target_zip,), daemon=True).start()
 
-    def ProcessClearBackups(self, target_zip):
+    def processClearBackups(self, target_zip):
         try:
             sz_path = self.sz_path_var.get().strip('"')
 
-            # Fallback to portable 7-Zip if settings path is broken
             if not os.path.exists(sz_path):
                 sz_path = resourcePath("7za.exe")
 
@@ -3514,10 +3735,8 @@ del "%~f0"
             
             temp_dir = tempfile.mkdtemp()
             
-            # Extract zip
             subprocess.run([sz_path, "x", target_zip, f"-o{temp_dir}"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
             
-            # Target the plates folder
             plates_dir = os.path.join(temp_dir, "plates")
             bak_count = 0
             
@@ -3533,7 +3752,6 @@ del "%~f0"
                 self.after(0, lambda: messagebox.showinfo("Clean Complete", "No .bak files were found in the plates folder of this zip!"))
                 return
                 
-            # Repack zip
             os.remove(target_zip)
             comp_flag = "-mx1" if "mx1" in self.comp_level_var.get() else "-mx9" if "mx9" in self.comp_level_var.get() else "-mx5"
             subprocess.run([sz_path, "a", "-tzip", comp_flag, target_zip, f"{temp_dir}\\*"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
@@ -3544,23 +3762,28 @@ del "%~f0"
         except Exception as e:
             self.after(0, lambda err=e: messagebox.showerror("Error", f"Failed to clear backups:\n{err}"))
 
-    def LoadActivePlates(self):
+    def loadActivePlates(self):
         import zipfile
         try:
-            out_path = getattr(self, "gen_output_dir_var", ctk.StringVar()).get()
-            if out_path == "Not Selected" or not out_path:
-                self.SetActivePlateUi("eu", None, "No Output Selected")
-                self.SetActivePlateUi("us", None, "No Output Selected")
+            is_latest = getattr(self, "version_var", ctk.StringVar()).get() == "Latest (Direct Zip)"
+            
+            if is_latest:
+                target_zip = getattr(self, "default_out_latest_var", ctk.StringVar(value="Not Selected")).get()
+            else:
+                out_path = getattr(self, "default_out_var", ctk.StringVar(value="Not Selected")).get()
+                if out_path != "Not Selected" and out_path:
+                    target_zip = os.path.join(out_path, "Textures.zip")
+                else:
+                    target_zip = "Not Selected"
+
+            if target_zip == "Not Selected" or not target_zip:
+                self.setActivePlateUI("eu", None, "No Output Selected")
+                self.setActivePlateUI("us", None, "No Output Selected")
                 return
 
-            if getattr(self, "version_var", ctk.StringVar()).get() == "Latest (Direct Zip)":
-                target_zip = out_path
-            else:
-                target_zip = os.path.join(out_path, "Textures.zip")
-
             if not os.path.exists(target_zip) or not os.path.isfile(target_zip):
-                self.SetActivePlateUi("eu", None, "Textures.zip not found")
-                self.SetActivePlateUi("us", None, "Textures.zip not found")
+                self.setActivePlateUI("eu", None, "Textures.zip not found")
+                self.setActivePlateUI("us", None, "Textures.zip not found")
                 return
 
             eu_img, us_img = None, None
@@ -3574,17 +3797,17 @@ del "%~f0"
                 if us_entry:
                     with z.open(us_entry) as f: us_img = Image.open(BytesIO(f.read())).copy()
 
-            self.SetActivePlateUi("eu", eu_img, "Default EU Plate")
-            self.SetActivePlateUi("us", us_img, "Default US Plate")
+            self.setActivePlateUI("eu", eu_img, "Default EU Plate")
+            self.setActivePlateUI("us", us_img, "Default US Plate")
             
         except zipfile.BadZipFile:
-            self.SetActivePlateUi("eu", None, "Invalid Textures.zip")
-            self.SetActivePlateUi("us", None, "Invalid Textures.zip")
+            self.setActivePlateUI("eu", None, "Invalid Textures.zip")
+            self.setActivePlateUI("us", None, "Invalid Textures.zip")
         except Exception as e:
-            self.SetActivePlateUi("eu", None, "Error Reading Plates")
-            self.SetActivePlateUi("us", None, "Error Reading Plates")
+            self.setActivePlateUI("eu", None, "Error Reading Plates")
+            self.setActivePlateUI("us", None, "Error Reading Plates")
             
-    def SetActivePlateUi(self, region, img, fallback_text):
+    def setActivePlateUI(self, region, img, fallback_text):
         label = getattr(self, f"active_{region}_label", None)
         if not label: return
         
@@ -3610,12 +3833,10 @@ del "%~f0"
         intensity = (math.sin(t) + 1) / 2 
         
         if getattr(self, "is_online", True):
-            # Online
             r = int(22 + (16 - 22) * intensity)
             g = int(56 + (185 - 56) * intensity)
             b = int(47 + (129 - 47) * intensity)
         else:
-            # Offline
             r = int(30 + (239 - 30) * intensity)
             g = int(15 + (68 - 15) * intensity)
             b = int(15 + (68 - 15) * intensity)
@@ -3640,14 +3861,14 @@ del "%~f0"
                 messagebox.showerror("Error", "No mask found to edit! Drop a mask or draw a new one first.")
                 return
                 
-        MaskPainter(self, source, mask, self.ApplyDrawnMask)
+        MaskPainter(self, source, mask, self.applyDrawnMask)
 
-    def ApplyDrawnMask(self, mask_path):
+    def applyDrawnMask(self, mask_path):
         self.mm_mask_drop_zone.path_entry.delete(0, "end")
         self.mm_mask_drop_zone.path_entry.insert(0, mask_path)
         self.mm_mask_drop_zone.updatePreview(mask_path)
         self.mm_mask_drop_zone.configure(border_color=COLORS["accent_success"])
-        self.SchedulePreviewUpdate()
+        self.schedulePreviewUpdate()
 
     def openNormalPainter(self):
         img_path = self.mm_drop_zone.getPath()
@@ -3657,31 +3878,31 @@ del "%~f0"
 
         self.btn_paint_map.configure(state="disabled", text=" OPENING...")
 
-        def Prepare():
+        def prepare():
             try:
                 img = Image.open(img_path)
                 b_str, b_blur, b_dir = self.base_intensity.get(), self.base_blur.get(), self.base_extrude.get()
                 m_str, m_blur, m_dir = self.mask_intensity.get(), self.mask_blur.get(), self.mask_extrude.get()
                 mask_path = self.mm_mask_drop_zone.getPath() if self.advanced_mode_var.get() else None
 
-                base_map = self.CreateNormalMapData(img, b_str, b_blur, b_dir)
+                base_map = self.createNormalMapData(img, b_str, b_blur, b_dir)
 
                 if mask_path and os.path.exists(mask_path):
                     mask_img = Image.open(mask_path).convert('L').resize(base_map.size)
-                    mask_map = self.CreateNormalMapData(img, m_str, m_blur, m_dir)
+                    mask_map = self.createNormalMapData(img, m_str, m_blur, m_dir)
                     final_img = Image.composite(mask_map, base_map, mask_img)
                 else:
                     final_img = base_map
 
-                self.after(0, lambda: NormalPainter(self, final_img, self.SavePaintedNormalMap))
+                self.after(0, lambda: NormalPainter(self, final_img, self.savePaintedNormalMap))
             except Exception as e:
                 self.after(0, lambda: messagebox.showerror("Error", f"Failed to load map: {e}"))
             finally:
                 self.after(0, lambda: self.btn_paint_map.configure(state="normal", text=" PAINT MAP"))
 
-        threading.Thread(target=Prepare, daemon=True).start()
+        threading.Thread(target=prepare, daemon=True).start()
 
-    def SavePaintedNormalMap(self, final_img, send_to_compiler=False):
+    def savePaintedNormalMap(self, final_img, send_to_compiler=False):
         temp_path = os.path.normpath(os.path.join(tempfile.gettempdir(), "last_painted_map.png"))
         
         try:
@@ -3689,7 +3910,7 @@ del "%~f0"
             self.last_mm_map = temp_path 
             
             if send_to_compiler:
-                self.SendMapToCompiler() 
+                self.sendMapToCompiler() 
             else:
                 self.mm_status_label.configure(text="✅ Changes Saved Internally!", text_color=COLORS["accent_success"])
                 self.after(4000, lambda: self.mm_status_label.configure(text=""))
@@ -3697,7 +3918,7 @@ del "%~f0"
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save: {e}")
 
-    def processUiQueue(self):
+    def processUIQueue(self):
         try:
             while True:
                 task = self.ui_queue.get_nowait()
@@ -3705,10 +3926,9 @@ del "%~f0"
                 self.ui_queue.task_done()
         except queue.Empty:
             pass
-        self.after(100, self.processUiQueue)
+        self.after(100, self.processUIQueue)
 
 if __name__ == "__main__":
-    # Clean up the old .exe if an update just finished
     if getattr(sys, 'frozen', False):
         old_exe = os.path.join(os.path.dirname(sys.executable), "PlateCompiler_old.exe")
         if os.path.exists(old_exe):
