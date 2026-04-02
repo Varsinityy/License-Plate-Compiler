@@ -3083,7 +3083,7 @@ del "%~f0"
             font=ctk.CTkFont(size=14, weight="bold"),
             command=self.saveCustomPlate
         )
-        self.btn_save_custom.pack(fill="x", padx=0, pady=(20, 10)) # Adjust padding
+        self.btn_save_custom.pack(fill="x", padx=0, pady=(20, 10))
 
         self.btn_send_to_mm = ctk.CTkButton(
             self.editor_page, 
@@ -3823,7 +3823,6 @@ del "%~f0"
                 ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(target_w, target_h))
                 self.after(0, lambda: label.configure(image=ctk_img, text=""))
             except (AttributeError, ValueError, OSError):
-                # Image processing failed, show error text
                 self.after(0, lambda: label.configure(image="", text="Preview Error"))
         else:
             self.after(0, lambda: label.configure(image="", text=fallback_text))
