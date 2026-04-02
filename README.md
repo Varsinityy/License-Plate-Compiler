@@ -4,7 +4,7 @@ A tool designed to build and organize license plate swatches. Instead of manuall
 
 ## Features
 
-* **Automated Compilation:** Builds the full file set for EU/UK and US/MX regions.
+* **Automated Compilation:** Builds the full file set for EU/UK and US/MX regions, now fully supports doing a custom plate for a single car (only for version 1.634.818.0 currently).
 * **3D Map Maker:** Create depth maps directly inside the tool with a live preview, adjustable intensity, smoothness, extrusion direction, and masking.
 * **Plate Designer:** Type custom text onto built-in state templates to generate new plates.
 * **Presets:** Custom made presets ready for compilation with no outside work.
