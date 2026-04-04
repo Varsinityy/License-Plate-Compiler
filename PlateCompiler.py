@@ -10,17 +10,18 @@ import json
 import sys
 import io
 import queue
+import socket
 from PIL import Image, ImageFilter, ImageDraw, ImageFont, ImageTk
 from io import BytesIO
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 
-def resourcePath(relative_path):
+def resourcePath(relativePath):
     try:
-        base_path = sys._MEIPASS
+        basePath = sys._MEIPASS
     except Exception:
-        base_path = os.path.abspath(".")
-    return os.path.normpath(os.path.join(base_path, relative_path))
+        basePath = os.path.dirname(os.path.abspath(__file__))
+    return os.path.normpath(os.path.join(basePath, relativePath))
 
 try:
     from ctypes import windll, c_int, byref, sizeof
@@ -55,7 +56,7 @@ COLORS = {
     "text_muted": "#71717a",
 }
 
-APP_VERSION = "1.5.1"
+APP_VERSION = "1.5.2"
 
 EU_UK_FILES = [
     "plate_eu1_base_diff_82ddf780-5958-4917-807d-31a9a76e08fc.swatchbin",
@@ -774,6 +775,40 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.attributes("-alpha", 0.0)
         self.animateOpen()
 
+        if len(sys.argv) > 1:
+            passed_file = sys.argv[1]
+            if passed_file.lower().endswith(".plate"):
+                self.after(800, lambda: self.importPlatePack(passed_file))
+
+    def associateExtension(self):
+        try:
+            import winreg
+            
+            if getattr(sys, 'frozen', False):
+                command_str = f'"{sys.executable}" "%1"'
+                icon_str = f'"{sys.executable}",0'
+            else:
+                python_exe = sys.executable
+                script_path = os.path.abspath(__file__)
+                command_str = f'"{python_exe}" "{script_path}" "%1"'
+                icon_str = f'"{python_exe}",0'
+                
+            key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\.plate")
+            winreg.SetValue(key, "", winreg.REG_SZ, "Varsinity.PlatePack")
+            winreg.CloseKey(key)
+
+            key2 = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\Varsinity.PlatePack\shell\open\command")
+            winreg.SetValue(key2, "", winreg.REG_SZ, command_str)
+            winreg.CloseKey(key2)
+
+            key3 = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\Varsinity.PlatePack\DefaultIcon")
+            winreg.SetValue(key3, "", winreg.REG_SZ, icon_str)
+            winreg.CloseKey(key3)
+
+            messagebox.showinfo("Success", ".plate files will now automatically open in this app!")
+        except Exception as e:
+            messagebox.showerror("Registry Error", f"Could not associate file type:\n{e}")
+
     def animateClose(self, alpha=1.0):
         if alpha > 0:
             alpha -= 0.1 
@@ -1156,12 +1191,18 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         duration = 0.25 
         
         if start_time is None:
+            if hasattr(self, '_indicator_job') and self._indicator_job:
+                self.after_cancel(self._indicator_job)
+                self._indicator_job = None
+                
             self.nav_frame.update_idletasks() 
+
             if target_widget.winfo_y() <= 10:
-                self.after(20, lambda: self.animateIndicator(target_widget, start_time, start_y, target_y))
+                self._indicator_job = self.after(20, lambda: self.animateIndicator(target_widget))
                 return
                 
             target_y = target_widget.winfo_y() + 4
+            
             if not self.tab_indicator.winfo_ismapped():
                 self.tab_indicator.place(x=8, y=target_y) 
                 return
@@ -1177,7 +1218,9 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.tab_indicator.place(x=8, y=current_y) 
         
         if progress < 1.0:
-            self.after(5, lambda: self.animateIndicator(target_widget, start_time, start_y, target_y))
+            self._indicator_job = self.after(5, lambda: self.animateIndicator(target_widget, start_time, start_y, target_y))
+        else:
+            self._indicator_job = None
 
     def animateTransition(self, old_frame, new_frame, direction=1, start_time=None):
         if not getattr(self, "animations_var", ctk.BooleanVar(value=True)).get():
@@ -1250,6 +1293,17 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             command=self.updateDropzoneRegions
         )
         self.region_selector.pack(side="left")
+
+        importBtn = ctk.CTkButton(
+            region_frame, 
+            text=" Import Plate Pack", 
+            image=self.loadIcon("download.png", size=14),
+            fg_color=COLORS["bg_card"],
+            hover_color=COLORS["border"],
+            height=32,
+            command=self.importPlatePack
+        )
+        importBtn.pack(side="right", padx=(10, 0))
 
         drop_container = ctk.CTkFrame(self.generator_page, fg_color="transparent")
         drop_container.pack(fill="x", pady=(5, 15))
@@ -1436,6 +1490,118 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                 self.last_dirs["out"] = folder
                 self.gen_output_dir_var.set(os.path.normpath(folder))
                 self.saveConfig(silent=True)
+
+    def importPlatePack(self, filePath=None):
+        import zipfile
+        
+        if not filePath:
+            initial = self.last_dirs.get("out", "/")
+            filePath = filedialog.askopenfilename(
+                initialdir=initial,
+                title="Import Plate Pack",
+                filetypes=[("Plate Pack", "*.plate"), ("Zip Archives", "*.zip")]
+            )
+            
+        if not filePath: return
+
+        self.last_dirs["out"] = os.path.dirname(filePath)
+        self.saveConfig(silent=True)
+
+        try:
+            tempDir = os.path.join(tempfile.gettempdir(), "imported_plate_pack")
+            if os.path.exists(tempDir):
+                shutil.rmtree(tempDir)
+            os.makedirs(tempDir, exist_ok=True)
+
+            with zipfile.ZipFile(filePath, 'r') as zf:
+                zf.extractall(tempDir)
+
+            metaPath = os.path.join(tempDir, "meta.json")
+            diffPath = os.path.join(tempDir, "diff.png")
+            nrmlPath = os.path.join(tempDir, "nrml.png")
+
+            if not os.path.exists(metaPath) or not os.path.exists(diffPath):
+                messagebox.showerror("Error", "Invalid .plate file. Missing metadata or base image.")
+                return
+
+            with open(metaPath, 'r') as f:
+                meta = json.load(f)
+
+            region = meta.get("region", "US & MX")
+            if region in ["EU & UK", "US & MX"]:
+                self.region_var.set(region)
+                self.updateDropzoneRegions()
+
+            self.image_drop_zone.path_entry.delete(0, "end")
+            self.image_drop_zone.path_entry.insert(0, diffPath)
+            self.image_drop_zone.updatePreview(diffPath)
+            self.image_drop_zone.configure(border_color=COLORS["accent_success"])
+
+            self.nrml_drop_zone.path_entry.delete(0, "end")
+            if os.path.exists(nrmlPath):
+                self.nrml_drop_zone.path_entry.insert(0, nrmlPath)
+                self.nrml_drop_zone.updatePreview(nrmlPath)
+                self.nrml_drop_zone.configure(border_color=COLORS["accent_success"])
+            else:
+                self.nrml_drop_zone.updatePreview("")
+                self.nrml_drop_zone.configure(border_color=COLORS["border"])
+
+            self.showPage("compiler")
+            
+            self.after(400, lambda: messagebox.showinfo("Success", f"Plate Pack loaded successfully!\nRegion auto-set to: {region}"))
+
+        except Exception as e:
+            messagebox.showerror("Import Error", f"Failed to read .plate file:\n{e}")
+
+    def exportPlatePack(self, item):
+        import zipfile
+        initialDir = self.last_dirs.get("out", "/")
+        savePath = filedialog.asksaveasfilename(
+            initialdir=initialDir,
+            title="Export Plate Pack",
+            defaultextension=".plate",
+            filetypes=[("Plate Pack", "*.plate")]
+        )
+        if not savePath: return
+
+        self.last_dirs["out"] = os.path.dirname(savePath)
+        self.saveConfig(silent=True)
+
+        def process():
+            try:
+                with zipfile.ZipFile(savePath, 'w', zipfile.ZIP_DEFLATED) as zf:
+                    meta = {"region": item['region']}
+                    zf.writestr("meta.json", json.dumps(meta))
+                    
+                    imgPath = item.get('img')
+                    if imgPath and os.path.exists(imgPath):
+                        zf.write(imgPath, "diff.png")
+                        
+                    nrmlPath = item.get('nrml')
+                    if nrmlPath and os.path.exists(nrmlPath):
+                        zf.write(nrmlPath, "nrml.png")
+                        
+                self.ui_queue.put(lambda: messagebox.showinfo("Success", f"Plate Pack exported to:\n{savePath}"))
+            except Exception as e:
+                self.ui_queue.put(lambda err=e: messagebox.showerror("Error", f"Failed to export plate pack:\n{err}"))
+                
+        threading.Thread(target=process, daemon=True).start()
+
+    def loadExternalFile(self, filePath):
+        if filePath.lower().endswith(".plate"):
+            self.showPage("compiler")
+            self.importPlatePack(filePath)
+            
+            self.deiconify()
+            if windll:
+                try:
+                    hwnd = windll.user32.GetParent(self.winfo_id())
+                    windll.user32.ShowWindow(hwnd, 9)
+                    windll.user32.SetForegroundWindow(hwnd)
+                except Exception:
+                    pass
+            self.lift()
+            self.focus_force()
 
     def setupMapMakerPage(self):
         header_frame = ctk.CTkFrame(self.map_maker_page, fg_color="transparent")
@@ -1897,6 +2063,21 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         )
         self.animations_switch.pack(side="left")
         
+        assoc_row = ctk.CTkFrame(comp_frame, fg_color="transparent")
+        assoc_row.pack(fill="x", padx=20, pady=(10, 10))
+        
+        ctk.CTkLabel(assoc_row, text="File Association:").pack(side="left", padx=(0, 10))
+        
+        self.btn_associate = ctk.CTkButton(
+            assoc_row,
+            text=" Make this app the default for .plate files",
+            image=self.loadIcon("package-plus.png", size=16),
+            fg_color=COLORS["bg_card"],
+            hover_color=COLORS["border"],
+            command=self.associateExtension
+        )
+        self.btn_associate.pack(side="left")
+
         bottom_row = ctk.CTkFrame(self.settings_page, fg_color="transparent")
         bottom_row.pack(fill="x", pady=20)
         
@@ -2711,6 +2892,17 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
 
             ctk.CTkButton(
                 card, 
+                text="", 
+                image=self.loadIcon("download.png", size=18),
+                width=30, 
+                height=30, 
+                fg_color="transparent", 
+                hover_color=COLORS["border"], 
+                command=lambda i=item: self.exportPlatePack(i)
+            ).pack(side="right", padx=(0, 10))
+
+            ctk.CTkButton(
+                card, 
                 text=btn_text, 
                 state=btn_state, 
                 fg_color=btn_color, 
@@ -2910,7 +3102,7 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                 response = requests.get(api_url, timeout=5)
                 
                 if response.status_code == 200:
-                    self.after(0, lambda: setStatus(True))
+                    self.ui_queue.put(lambda: setStatus(True))
                     
                     data = response.json()
                     latest_tag = data.get("tag_name", f"v{APP_VERSION}")
@@ -3008,28 +3200,28 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                             ctk.CTkButton(btn_frame, text="Not Now", width=120, fg_color=COLORS["bg_card"], hover_color=COLORS["border"], command=onNo).pack(side="left", expand=True, padx=(20, 10))
                             ctk.CTkButton(btn_frame, text="Install Update", width=120, fg_color=COLORS["accent_success"], hover_color="#059669", command=onYes).pack(side="right", expand=True, padx=(10, 20))
 
-                        self.after(0, promptUpdate)
+                        self.ui_queue.put(promptUpdate)
                         
                     elif manual:
-                        self.after(0, lambda: messagebox.showinfo("Up to Date", "You are running the latest version."))
+                        self.ui_queue.put(lambda: messagebox.showinfo("Up to Date", "You are running the latest version."))
                 else:
-                    self.after(0, lambda: setStatus(False))
+                    self.ui_queue.put(lambda: setStatus(False))
                     if manual:
-                        self.after(0, lambda: messagebox.showerror("Update Error", "Could not connect to GitHub."))
+                        self.ui_queue.put(lambda: messagebox.showerror("Update Error", "Could not connect to GitHub."))
             except Exception as e:
-                self.after(0, lambda: setStatus(False))
-                if manual: self.after(0, lambda err=e: messagebox.showerror("Update Error", f"An error occurred: {err}"))
+                self.ui_queue.put(lambda: setStatus(False))
+                if manual: self.ui_queue.put(lambda err=e: messagebox.showerror("Update Error", f"An error occurred: {err}"))
 
         import threading
         threading.Thread(target=task, daemon=True).start()
 
     def executeAutoUpdate(self, download_url):
         try:
-            self.after(0, lambda: self.btn_update.configure(text="Preparing...", state="disabled"))
+            self.ui_queue.put(lambda: self.btn_update.configure(text="Preparing...", state="disabled"))
             
             if not getattr(sys, 'frozen', False):
-                self.after(0, lambda: messagebox.showinfo("Notice", "Auto-update only works when running the compiled .exe file."))
-                self.after(0, lambda: self.btn_update.configure(text="Check for Updates", state="normal"))
+                self.ui_queue.put(lambda: messagebox.showinfo("Notice", "Auto-update only works when running the compiled .exe file."))
+                self.ui_queue.put(lambda: self.btn_update.configure(text="Check for Updates", state="normal"))
                 return
 
             import requests
@@ -3046,7 +3238,7 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
 
             os.rename(current_exe, old_exe)
 
-            self.after(0, lambda: self.btn_update.configure(text="Downloading 0%..."))
+            self.ui_queue.put(lambda: self.btn_update.configure(text="Downloading 0%..."))
             
             response = requests.get(download_url, stream=True, timeout=30)
             response.raise_for_status()
@@ -3063,10 +3255,10 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                         if total_size > 0:
                             pct = int((downloaded / total_size) * 100)
                             if pct != last_pct and pct % 5 == 0:
-                                self.after(0, lambda p=pct: self.btn_update.configure(text=f"Downloading {p}%..."))
+                                self.ui_queue.put(lambda p=pct: self.btn_update.configure(text=f"Downloading {p}%..."))
                                 last_pct = pct
 
-            self.after(0, lambda: self.btn_update.configure(text="Installing..."))
+            self.ui_queue.put(lambda: self.btn_update.configure(text="Installing..."))
 
             bat_path = os.path.join(base_dir, "update_cleanup.bat")
             bat_content = f"""@echo off
@@ -3091,8 +3283,8 @@ del "%~f0"
             except Exception:
                 pass 
                 
-            self.after(0, lambda err=e: messagebox.showerror("Update Error", f"Failed to update:\n{err}"))
-            self.after(0, lambda: self.btn_update.configure(text="Check for Updates", state="normal"))
+            self.ui_queue.put(lambda err=e: messagebox.showerror("Update Error", f"Failed to update:\n{err}"))
+            self.ui_queue.put(lambda: self.btn_update.configure(text="Check for Updates", state="normal"))
 
     def setupEditorPage(self):
         header = ctk.CTkLabel(self.editor_page, text="Plate Designer", font=ctk.CTkFont(family="Ubuntu", size=32, weight="bold"))
@@ -3332,7 +3524,7 @@ del "%~f0"
             ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(preview_w, preview_h))
             self.editor_preview_label.configure(image=ctk_img, text="")
         else:
-            self.editor_preview_label.configure(text="Missing template image.", image="")
+            self.editor_preview_label.configure(text="Missing template image.", image=None)
 
     def saveCustomPlate(self):
         img = self.generatePlateImage()
@@ -3904,7 +4096,8 @@ del "%~f0"
             ("New Car-Specific Output Mode", "Added a new mode in the Presets page that allows you to compile plates into one specific car instead of doing it globally."),
             ("New Remove Buttons", "Added remove buttons to all dropboxes."),
             ("UI Bugfixes and Improvements", "Resolved several minor UI issues across the tool."),
-            ("Dynamic Blur Feature", "Added a new dynamic blur feature for height maps.")
+            ("Dynamic Blur Feature", "Added a new dynamic blur feature for height maps."),
+            ("New Plate Pack Function", "Share setups instantly using '.plate' files (image, map, and region). Export from History, import in the Compiler, or double-click files to launch the app (enable file association in Settings)")
         ]
 
         for idx, (title, desc) in enumerate(changes):
@@ -3985,7 +4178,7 @@ del "%~f0"
 
     def applyActivePlateFallback(self, label, text):
         if label.winfo_exists():
-            label.configure(image="", text=text)
+            label.configure(image=None, text=text)
 
     def openOutputFolder(self):
         path = self.gen_output_dir_var.get()
@@ -4081,12 +4274,12 @@ del "%~f0"
     def loadActivePlates(self):
         import zipfile
         try:
-            is_latest = getattr(self, "version_var", ctk.StringVar()).get() == "Latest (Direct Zip)"
+            is_latest = self.version_var.get() == "Latest (Direct Zip)"
             
             if is_latest:
-                target_zip = getattr(self, "default_out_latest_var", ctk.StringVar(value="Not Selected")).get()
+                target_zip = self.default_out_latest_var.get()
             else:
-                out_path = getattr(self, "default_out_var", ctk.StringVar(value="Not Selected")).get()
+                out_path = self.default_out_var.get()
                 if out_path != "Not Selected" and out_path:
                     target_zip = os.path.join(out_path, "Textures.zip")
                 else:
@@ -4137,11 +4330,11 @@ del "%~f0"
                 
                 img.thumbnail((target_w, target_h))
                 ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(target_w, target_h))
-                self.after(0, lambda: label.configure(image=ctk_img, text=""))
+                self.ui_queue.put(lambda: label.configure(image=ctk_img, text=""))
             except (AttributeError, ValueError, OSError):
-                self.after(0, lambda: label.configure(image="", text="Preview Error"))
+                self.ui_queue.put(lambda: label.configure(image=None, text="Preview Error"))
         else:
-            self.after(0, lambda: label.configure(image="", text=fallback_text))
+            self.ui_queue.put(lambda: label.configure(image=None, text=fallback_text))
 
     def animateStatusDot(self):
         t = time.time() * 2.5 
@@ -4256,6 +4449,23 @@ del "%~f0"
         return img
 
 if __name__ == "__main__":
+    INSTANCE_PORT = 47382
+    
+    try:
+        serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        serverSocket.bind(('127.0.0.1', INSTANCE_PORT))
+        serverSocket.listen(1)
+    except socket.error:
+        if len(sys.argv) > 1:
+            try:
+                clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                clientSocket.connect(('127.0.0.1', INSTANCE_PORT))
+                clientSocket.sendall(sys.argv[1].encode('utf-8'))
+                clientSocket.close()
+            except Exception:
+                pass
+        sys.exit(0)
+
     if getattr(sys, 'frozen', False):
         old_exe = os.path.join(os.path.dirname(sys.executable), "PlateCompiler_old.exe")
         if os.path.exists(old_exe):
@@ -4263,6 +4473,23 @@ if __name__ == "__main__":
                 os.remove(old_exe)
             except Exception:
                 pass 
+
+    app = PlateMakerApp()
+
+    def listenForFiles():
+        while True:
+            try:
+                conn, addr = serverSocket.accept()
+                data = conn.recv(4096).decode('utf-8')
+                if data:
+                    app.ui_queue.put(lambda d=data: app.loadExternalFile(d))
+                conn.close()
+            except Exception:
+                pass
+
+    threading.Thread(target=listenForFiles, daemon=True).start()
+    
+    app.mainloop()
 
     app = PlateMakerApp()
     app.mainloop()
