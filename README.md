@@ -28,4 +28,3 @@ A tool designed to build and organize license plate swatches. Instead of manuall
 ## License
 
 This project uses the MIT License. See the LICENSE file for details.
-Developed by Varsinity
