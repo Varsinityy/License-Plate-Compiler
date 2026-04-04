@@ -8,6 +8,7 @@ A tool designed to build and organize license plate swatches. Instead of manuall
 * **3D Map Maker:** Create depth maps directly inside the tool with a live preview, adjustable intensity, smoothness, extrusion direction, and masking.
 * **Plate Designer:** Type custom text onto built-in state templates to generate new plates.
 * **Presets:** Custom made presets ready for compilation with no outside work.
+* **Plate Packs:** Share setups instantly using '.plate' files (image, map, and region). Export from History, import in the Compiler, or double-click files to launch the app (enable file association in Settings)
 * **Direct Zip Merging:** Injects new plates straight into your Textures.zip archive.
 * **Auto Backups:** Automatically saves backups of your original plates so you can restore them with one click.
 
