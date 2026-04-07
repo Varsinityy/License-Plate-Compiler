@@ -56,7 +56,7 @@ COLORS = {
     "text_muted": "#71717a",
 }
 
-APP_VERSION = "1.5.2"
+APP_VERSION = "1.6.0"
 
 EU_UK_FILES = [
     "plate_eu1_base_diff_82ddf780-5958-4917-807d-31a9a76e08fc.swatchbin",
@@ -744,9 +744,9 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.total_compiled = 0
         
         self.backup_states = {
-            "Latest (Direct Zip)_Global (Textures.zip)": True,
+            "Latest (Direct Zip)_Global": True,
             "Latest (Direct Zip)_Car-Specific (Car.zip)": True,
-            "1.634.818.0_Global (Textures.zip)": True,
+            "1.634.818.0_Global": True,
             "1.634.818.0_Car-Specific (Car.zip)": True
         }
         self.current_backup_var = ctk.BooleanVar(value=True)
@@ -816,6 +816,7 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             self.after(10, lambda: self.animateClose(alpha))
         else:
             self.destroy()
+            os._exit(0)
 
     def animateOpen(self, alpha=0.0):
         if alpha < 1.0:
@@ -1325,21 +1326,34 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
 
         ctk.CTkLabel(header_row, text="Step 4: Output Location", font=ctk.CTkFont(weight="bold")).pack(side="left")
 
+        gen_switches_frame = ctk.CTkFrame(header_row, fg_color="transparent")
+        gen_switches_frame.pack(side="right")
+
+        self.glossyVar = ctk.BooleanVar(value=False)
+        self.glossySwitch = ctk.CTkSwitch(
+            gen_switches_frame, 
+            text="Glossy Finish", 
+            variable=self.glossyVar, 
+            button_color=COLORS["accent_primary"],
+            command=self.updateMaterialsZipVisibility
+        )
+        self.glossySwitch.pack(side="left", padx=(0, 15))
+
         self.compiler_backup_switch = ctk.CTkSwitch(
-            header_row,
+            gen_switches_frame,
             text="Create Backups",
             variable=self.current_backup_var,
             button_color=COLORS["accent_primary"],
             command=self.onBackupToggle
         )
-        self.compiler_backup_switch.pack(side="right")
+        self.compiler_backup_switch.pack(side="left")
         
-        self.output_mode_var = ctk.StringVar(value="Global (Textures.zip)")
+        self.output_mode_var = ctk.StringVar(value="Global")
         self.mode_row = ctk.CTkFrame(output_frame, fg_color="transparent")
         self.mode_row.pack(fill="x", padx=20, pady=(0, 10))
         ctk.CTkLabel(self.mode_row, text="Output Mode:", font=ctk.CTkFont(size=12, weight="bold")).pack(side="left", padx=(0, 10))
         self.mode_selector = ctk.CTkSegmentedButton(
-            self.mode_row, values=["Global (Textures.zip)", "Car-Specific (Car.zip)"], 
+            self.mode_row, values=["Global", "Car-Specific (Car.zip)"], 
             variable=self.output_mode_var, fg_color=COLORS["bg_primary"], 
             selected_color=COLORS["accent_primary"], text_color=COLORS["text_primary"],
             command=self.toggleOutputMode
@@ -1347,6 +1361,7 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.mode_selector.pack(side="left")
         
         self.gen_output_dir_var = ctk.StringVar(value="Not Selected")
+        self.materialsZipVar = ctk.StringVar(value="Not Selected")
 
         self.history_page = ctk.CTkScrollableFrame(self.view_container, fg_color=COLORS["bg_primary"])
         self.setupHistoryPage()
@@ -1415,6 +1430,24 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         gen_dir_btn = ctk.CTkButton(gen_dir_row, text="Browse", width=80, fg_color=COLORS["bg_card"], command=self.browseGenOutputDir)
         gen_dir_btn.pack(side="right")
 
+        self.materialsLabel = ctk.CTkLabel(output_frame, text="Materials.zip Path:", font=ctk.CTkFont(size=12), text_color=COLORS["text_secondary"])
+        
+        self.materialsHelp = ctk.CTkLabel(
+            output_frame, 
+            text=r"Select your original Materials.zip file in Forza Horizon 5\Content\media\cars\_library", 
+            font=ctk.CTkFont(size=11), 
+            text_color=COLORS["text_muted"],
+            wraplength=500,
+            justify="left"
+        )
+
+        self.materialsInputRow = ctk.CTkFrame(output_frame, fg_color="transparent")
+
+        self.materialsZipEntry = ctk.CTkEntry(self.materialsInputRow, textvariable=self.materialsZipVar, fg_color=COLORS["bg_primary"], border_color=COLORS["border"])
+        self.materialsZipEntry.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        self.materialsZipEntry.bind("<Button-1>", lambda e: self.browseMaterialsZip())
+        ctk.CTkButton(self.materialsInputRow, text="Browse", width=80, fg_color=COLORS["bg_card"], command=self.browseMaterialsZip).pack(side="right")
+
         self.sub_help_text_label = ctk.CTkLabel(output_frame, text="", font=ctk.CTkFont(size=11, slant="italic"), text_color=COLORS["text_muted"])
 
         self.btn_generate = ctk.CTkButton(
@@ -1459,12 +1492,15 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
     def toggleOutputMode(self, value):
         if value == "Car-Specific (Car.zip)":
             self.output_label.configure(text="Car.zip Path:")
+            if hasattr(self, "history_output_label"): self.history_output_label.configure(text="Car.zip Path:")
+            if hasattr(self, "preset_output_label"): self.preset_output_label.configure(text="Car.zip Path:")
             self.help_text_label.configure(text="Select the .zip file of the car mod you want to apply this plate to.")
             self.sub_help_text_label.place_forget()
             self.gen_output_dir_var.set("Not Selected")
         else:
             self.toggleHelpText(self.version_var.get())
         self.updateBackupToggleState()
+        self.updateMaterialsZipVisibility()
 
     def browseGenOutputDir(self):
         is_car_specific = getattr(self, "output_mode_var", None) and self.output_mode_var.get() == "Car-Specific (Car.zip)"
@@ -1532,6 +1568,9 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                 self.region_var.set(region)
                 self.updateDropzoneRegions()
 
+            self.glossyVar.set(meta.get("glossy", False))
+            self.updateMaterialsZipVisibility()
+
             self.image_drop_zone.path_entry.delete(0, "end")
             self.image_drop_zone.path_entry.insert(0, diffPath)
             self.image_drop_zone.updatePreview(diffPath)
@@ -1570,7 +1609,10 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         def process():
             try:
                 with zipfile.ZipFile(savePath, 'w', zipfile.ZIP_DEFLATED) as zf:
-                    meta = {"region": item['region']}
+                    meta = {
+                        "region": item['region'],
+                        "glossy": item.get('glossy', self.glossyVar.get())
+                    }
                     zf.writestr("meta.json", json.dumps(meta))
                     
                     imgPath = item.get('img')
@@ -2128,15 +2170,17 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                     if hasattr(self, 'comp_level_var'): self.comp_level_var.set(data.get("comp_level", "Normal (-mx5)"))
                     if hasattr(self, 'silent_mode_var'): self.silent_mode_var.set(data.get("silent_mode", False))
                     if hasattr(self, 'animations_var'): self.animations_var.set(data.get("animations", True))
+                    if hasattr(self, 'materialsZipVar'): self.materialsZipVar.set(data.get("materialsZip", "Not Selected"))
+                    if hasattr(self, 'glossyVar'): self.glossyVar.set(data.get("glossy_finish", False))
                     
                     loaded_backups = data.get("backup_states")
                     if loaded_backups is None:
                         old_val = data.get("create_backups", True)
                         self.backup_states = {
-                            "Latest (Direct Zip)_Global (Textures.zip)": old_val,
-                            "Latest (Direct Zip)_Car-Specific (Car Mod .zip)": old_val,
-                            "1.634.818.0_Global (Textures.zip)": old_val,
-                            "1.634.818.0_Car-Specific (Car Mod .zip)": old_val
+                            "Latest (Direct Zip)_Global": old_val,
+                            "Latest (Direct Zip)_Car-Specific (Car.zip)": old_val,
+                            "1.634.818.0_Global": old_val,
+                            "1.634.818.0_Car-Specific (Car.zip)": old_val
                         }
                     else:
                         self.backup_states = loaded_backups
@@ -2185,6 +2229,8 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                     "silent_mode": getattr(self, "silent_mode_var", ctk.BooleanVar(value=False)).get(),
                     "backup_states": getattr(self, "backup_states", {}),
                     "animations": getattr(self, "animations_var", ctk.BooleanVar(value=True)).get(),
+                    "materialsZip": getattr(self, "materialsZipVar", ctk.StringVar(value="Not Selected")).get(),
+                    "glossy_finish": getattr(self, "glossyVar", ctk.BooleanVar(value=False)).get(),
                     "history": getattr(self, "history", []),
                     "last_dirs": getattr(self, "last_dirs", {"img": "/", "nrml": "/", "out": "/", "mm_source": "/"}),
                     "version": getattr(self, "version_var", ctk.StringVar(value="Latest (Direct Zip)")).get()
@@ -2286,37 +2332,45 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             return True
         return False
 
-    def patchBinaryRegex(self, filepath, pattern, replace_func):
+    def patchBinaryRegex(self, filepath, pattern, replaceFunc):
         import re
         with open(filepath, 'rb') as f:
             data = bytearray(f.read())
             
         matches = list(re.finditer(pattern, data, flags=re.IGNORECASE))
         if not matches:
-            return False
+            return None
             
-        replaced = False
-        for match in matches:
-            old_bytes = match.group(0)
-            old_str = old_bytes.decode('ascii', errors='ignore')
-            new_str = replace_func(old_str)
+        final_applied_str = None
+        for match in reversed(matches):
+            oldBytes = match.group(0)
+            oldStr = oldBytes.decode('ascii', errors='ignore').split('\x00')[0]
             
-            if new_str:
-                new_bytes = new_str.encode('ascii')
-                overwrite_len = max(len(old_bytes), len(new_bytes))
-                padded_new = new_bytes.ljust(overwrite_len, b'\x00')
+            newStr = replaceFunc(oldStr, len(oldBytes))
+            
+            if newStr:
+                newBytes = newStr.encode('ascii', errors='ignore')
                 
-                start, _ = match.span()
-                for i in range(overwrite_len):
-                    if start + i < len(data):
-                        data[start + i] = padded_new[i]
-                replaced = True
+                if len(newBytes) > len(oldBytes):
+                    extIdx = newStr.rfind('.')
+                    extension = newStr[extIdx:] if extIdx != -1 else ""
+                    basePart = newStr[:extIdx] if extIdx != -1 else newStr
+                    
+                    while len(newBytes) > len(oldBytes) and len(basePart) > 1:
+                        basePart = basePart[:-1]
+                        newBytes = (basePart + extension).encode('ascii', errors='ignore')
+                    newStr = basePart + extension
                 
-        if replaced:
+                paddedNew = newBytes.ljust(len(oldBytes), b'\x00')
+                start, end = match.span()
+                data[start:end] = paddedNew
+                final_applied_str = newStr
+                
+        if final_applied_str:
             with open(filepath, 'wb') as f:
                 f.write(data)
-            return True
-        return False
+            return final_applied_str
+        return None
 
     def runGeneration(self):
         if getattr(self, "is_compiling", False):
@@ -2329,7 +2383,8 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.history.append({
             "region": self.region_var.get(), 
             "img": self.image_drop_zone.getPath(), 
-            "nrml": self.nrml_drop_zone.getPath()
+            "nrml": self.nrml_drop_zone.getPath(),
+            "glossy": self.glossyVar.get()
         })
 
         self.saveConfig(silent=True)
@@ -2355,201 +2410,138 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.animateButton()
         threading.Thread(target=self.processFiles, args=(img_path, nrml_path, output_base), daemon=True).start()
 
-    def processFiles(self, img_path, nrml_path, out_dir, silent=False):
+    def processFiles(self, imgPath, nrmlPath, outDir, silent=False):
         try:
-            output_base = out_dir
-            selected_region = self.region_var.get()
-            target_files = EU_UK_FILES if selected_region == "EU & UK" else US_MX_FILES
-            atlas_files = EU_UK_ATLAS_FILES if selected_region == "EU & UK" else US_MX_ATLAS_FILES
-            is_latest = self.version_var.get() == "Latest (Direct Zip)"
-            
-            sz_path = self.sz_path_var.get().strip('"')
-            comp_flag = "-mx1" if "mx1" in self.comp_level_var.get() else "-mx9" if "mx9" in self.comp_level_var.get() else "-mx5"
-            is_silent = silent or self.silent_mode_var.get()
-            
-            is_car_specific = getattr(self, "output_mode_var", None) and self.output_mode_var.get() == "Car-Specific (Car.zip)"
+            outputBase = outDir
+            selectedRegion = self.region_var.get()
+            targetFiles = EU_UK_FILES if selectedRegion == "EU & UK" else US_MX_FILES
+            atlasFiles = EU_UK_ATLAS_FILES if selectedRegion == "EU & UK" else US_MX_ATLAS_FILES
+            isLatest = self.version_var.get() == "Latest (Direct Zip)"
+            szPath = self.sz_path_var.get().strip('"')
+            compFlag = "-mx1" if "mx1" in self.comp_level_var.get() else "-mx9" if "mx9" in self.comp_level_var.get() else "-mx5"
+            isSilent = silent or self.silent_mode_var.get()
+            isCarSpecific = getattr(self, "output_mode_var", None) and self.output_mode_var.get() == "Car-Specific (Car.zip)"
 
-            if not os.path.exists(sz_path):
-                sz_path = resourcePath("7za.exe")
+            if not os.path.exists(szPath):
+                szPath = resourcePath("7za.exe")
 
-            if not os.path.exists(sz_path): 
-                raise FileNotFoundError(f"7-Zip not found. Checked settings and portable fallback.")
+            if not os.path.exists(szPath): 
+                raise FileNotFoundError(f"7-Zip not found.")
 
-            if is_car_specific:
+            if isCarSpecific:
                 self.log("Extracting Car Mod Zip...")
-                temp_dir = tempfile.mkdtemp()
-                subprocess.run([sz_path, "x", output_base, f"-o{temp_dir}"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
-                
-                car_id = os.path.splitext(os.path.basename(output_base))[0]
-                self.log(f"Using zip name as Car ID: {car_id}")
-                
-                textures_dir = os.path.join(temp_dir, "textures")
-                materials_dir = os.path.join(temp_dir, "materials")
-                    
-                os.makedirs(textures_dir, exist_ok=True)
-                os.makedirs(materials_dir, exist_ok=True)
-
-                self.log("Generating swatches in Car textures folder...")
-                prefix = "euplate" if selected_region == "EU & UK" else "usplate"
-                diff_name = f"{prefix}_diff.swatchbin"
-                nrml_name = f"{prefix}_nrml.swatchbin"
-                
-                if img_path and os.path.isfile(img_path):
-                    shutil.copyfile(img_path, os.path.join(textures_dir, diff_name))
-                    self.log(f"✓ {diff_name}")
-                if nrml_path and os.path.isfile(nrml_path):
-                    shutil.copyfile(nrml_path, os.path.join(textures_dir, nrml_name))
-                    self.log(f"✓ {nrml_name}")
-
-                self.log("Injecting and patching Material and Model bins...")
-                base_mat_name = "plateeu_base.materialbin" if selected_region == "EU & UK" else "plateus_base.materialbin"
-                base_model_name = "PlateEU_a.modelbin" if selected_region == "EU & UK" else "PlateUS_a.modelbin"
-                
-                ref_mat_name = "plateEU_base.materialbin" if selected_region == "EU & UK" else "plateUS_base.materialbin"
-                base_mat_path = resourcePath(ref_mat_name)
-                if not os.path.exists(base_mat_path):
-                    base_mat_path = resourcePath(base_mat_name)
-                
-                if not os.path.exists(base_mat_path):
-                    self.log(f"WARNING: Reference {ref_mat_name} not found in tool folder! Please include it for car-specific plates to work.")
-                else:
-                    dest_mat_path = os.path.join(materials_dir, base_mat_name)
-                    shutil.copy(base_mat_path, dest_mat_path)
-                    
-                    model_path = None
-                    for root, dirs, files in os.walk(temp_dir):
+                tempDir = tempfile.mkdtemp()
+                subprocess.run([szPath, "x", outputBase, f"-o{tempDir}", "-y"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                carId = os.path.splitext(os.path.basename(outputBase))[0]
+                texturesDir = os.path.join(tempDir, "textures")
+                materialsDir = os.path.join(tempDir, "materials")
+                os.makedirs(texturesDir, exist_ok=True)
+                os.makedirs(materialsDir, exist_ok=True)
+                prefix = "euplate" if selectedRegion == "EU & UK" else "usplate"
+                if imgPath and os.path.isfile(imgPath):
+                    shutil.copyfile(imgPath, os.path.join(texturesDir, f"{prefix}_diff.swatchbin"))
+                if nrmlPath and os.path.isfile(nrmlPath):
+                    shutil.copyfile(nrmlPath, os.path.join(texturesDir, f"{prefix}_nrml.swatchbin"))
+                isGlossy = getattr(self, "glossyVar", ctk.BooleanVar(value=False)).get()
+                sourceMatName = ("eu_glossy.materialbin" if selectedRegion == "EU & UK" else "us_glossy.materialbin") if isGlossy else ("eu.materialbin" if selectedRegion == "EU & UK" else "us.materialbin")
+                baseMatPath = resourcePath(sourceMatName)
+                if os.path.exists(baseMatPath):
+                    destMatName = "eu.materialbin" if selectedRegion == "EU & UK" else "us.materialbin"
+                    shutil.copy(baseMatPath, os.path.join(materialsDir, destMatName))
+                    modelPath = None
+                    for root, dirs, files in os.walk(tempDir):
                         for f in files:
-                            if f.lower() == base_model_name.lower():
-                                model_path = os.path.join(root, f)
+                            if f.lower() == ("PlateEU_a.modelbin" if selectedRegion == "EU & UK" else "PlateUS_a.modelbin").lower():
+                                modelPath = os.path.join(root, f)
                                 break
-                        if model_path: break
-                        
-                    if model_path:
+                        if modelPath: break
+                    if modelPath:
                         if self.current_backup_var.get():
-                            bak_path = model_path + ".bak"
-                            if not os.path.exists(bak_path):
-                                shutil.copy2(model_path, bak_path)
-                                self.log(f"✓ Backed up {base_model_name}")
-
-                        mat_pattern = b'Game:\\\\[mM]edia\\\\cars\\\\[a-zA-Z0-9_\\\\.\\s-]+?\\.materialbin'
-                        def replModel(old_str):
-                            if "_base.materialbin" in old_str.lower():
-                                return f"Game:\\Media\\cars\\{car_id}\\materials\\{base_mat_name}"
-                            return None
-                        
-                        patched = self.patchBinaryRegex(model_path, mat_pattern, replModel)
-                        if patched:
-                            self.log(f"✓ Patched {base_model_name}")
-                        else:
-                            self.log(f"✗ Failed to patch {base_model_name} (String not found)")
-                    else:
-                        self.log(f"WARNING: {base_model_name} not found in the car mod!")
-
-                    swatch_pattern = b'Game:\\\\[mM]edia\\\\cars\\\\_library\\\\[a-zA-Z0-9_\\\\.\\s-]+?\\.swatchbin'
-                    def replSwatch(old_str):
-                        lower_str = old_str.lower()
-                        if "diff" in lower_str:
-                            return f"Game:\\Media\\cars\\{car_id}\\textures\\{diff_name}"
-                        elif "nrml" in lower_str:
-                            return f"Game:\\Media\\cars\\{car_id}\\textures\\{nrml_name}"
-                        return None
-                        
-                    patched_mat = self.patchBinaryRegex(dest_mat_path, swatch_pattern, replSwatch)
-
-                    if patched_mat:
-                        self.log(f"✓ Patched {base_mat_name}")
-                    else:
-                        self.log(f"✗ Failed to patch {base_mat_name} (Strings not found)")
-
-                self.log(f"Repacking Car Mod Zip with {comp_flag} compression...")
-                os.remove(output_base)
-                subprocess.run([sz_path, "a", "-tzip", comp_flag, output_base, f"{temp_dir}\\*"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
-
-                shutil.rmtree(temp_dir)
+                            bakPath = modelPath + ".bak"
+                            if not os.path.exists(bakPath): shutil.copy2(modelPath, bakPath)
+                        self.patchBinaryRegex(modelPath, b'Game:\\\\[mM]edia\\\\cars\\\\[a-zA-Z0-9_\\\\.\\s-]+?\\.materialbin', lambda s, l: f"Game:\\Media\\cars\\{carId}\\materials\\{destMatName}" if any(x in s.lower() for x in ["_base.materialbin", "us.materialbin", "eu.materialbin", "plateus_.materialbin", "plateeu_.materialbin"]) else None)
+                    self.patchBinaryRegex(os.path.join(materialsDir, destMatName), b'Game:\\\\[mM]edia\\\\cars\\\\_library\\\\[a-zA-Z0-9_\\\\.\\s-]+?\\.swatchbin', lambda s, l: (f"Game:\\Media\\cars\\{carId}\\textures\\{prefix}_diff.swatchbin" if "diff" in s.lower() else f"Game:\\Media\\cars\\{carId}\\textures\\{prefix}_nrml.swatchbin" if "nrml" in s.lower() else None))
+                os.remove(outputBase)
+                subprocess.run([szPath, "a", "-tzip", compFlag, outputBase, f"{tempDir}\\*"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                shutil.rmtree(tempDir)
                 self.is_compiling = False
                 self.total_compiled += 1
                 self.saveConfig(silent=True)
                 self.log("Car-specific build complete!")
-                if not is_silent: self.after(0, lambda: messagebox.showinfo("Success", "Successfully modified the car mod!"))
+                if not isSilent: self.after(0, lambda: messagebox.showinfo("Success", "Successfully modified the car mod!"))
                 return
 
-            if is_latest:
-                if not os.path.exists(sz_path):
-                    sz_path = resourcePath("7za.exe")
-
-                if not os.path.exists(sz_path): 
-                    raise FileNotFoundError(f"7-Zip not found. Checked settings and portable fallback.")
-                temp_dir = tempfile.mkdtemp()
-                
-                self.log("Extracting Textures.zip (this may take a minute)...")
-                subprocess.run([sz_path, "x", output_base, f"-o{temp_dir}"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
-
-                swatches_dir = os.path.join(temp_dir, "plates", "swatches")
-                os.makedirs(swatches_dir, exist_ok=True)
-
-                if self.current_backup_var.get():
-                    self.log("Backing up existing originals to .bak...")
-                    for f in target_files + atlas_files:
-                        target_file = os.path.join(swatches_dir, f)
-                        if os.path.exists(target_file):
-                            os.replace(target_file, target_file + ".bak")
-
-                self.log("Generating new plates...")
-                if img_path and os.path.isfile(img_path): self.generateSwatches(img_path, target_files, False, swatches_dir)
-                if nrml_path and os.path.isfile(nrml_path): self.generateSwatches(nrml_path, target_files, True, swatches_dir)
-
-                blank = Image.new('RGBA', (1024, 1024), (0, 0, 0, 0))
-                for a in atlas_files: blank.save(os.path.join(swatches_dir, a), format="PNG")
-
-                self.log(f"Rebuilding Textures.zip with {comp_flag} compression...")
-                os.remove(output_base)
-                subprocess.run([sz_path, "a", "-tzip", comp_flag, output_base, f"{temp_dir}\\*"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
-
-                shutil.rmtree(temp_dir)
-                self.is_compiling = False
-                self.total_compiled += 1
-                self.saveConfig(silent=True)
-                self.log("Build complete!")
-                if not is_silent: self.after(0, lambda: messagebox.showinfo("Success", "Successfully extracted, updated, and rebuilt Textures.zip!"))
+            if isLatest:
+                libDir = os.path.dirname(outputBase)
+                targetTexZip = outputBase
             else:
-                if not os.path.exists(sz_path): raise FileNotFoundError(f"7-Zip not found at {sz_path}")
+                libDir = outputBase
+                targetTexZip = os.path.join(libDir, "Textures.zip")
+            
+            targetMatZip = os.path.join(libDir, "Materials.zip")
 
-                target_zip = os.path.join(output_base, "Textures.zip")
-                temp_dir = tempfile.mkdtemp()
+            self.log(f"Processing {os.path.basename(targetTexZip)}...")
+            texTemp = tempfile.mkdtemp()
+            if os.path.exists(targetTexZip):
+                subprocess.run([szPath, "x", targetTexZip, f"-o{texTemp}", "-y"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            
+            swatchesDir = os.path.join(texTemp, "plates", "swatches")
+            os.makedirs(swatchesDir, exist_ok=True)
+            
+            if self.current_backup_var.get():
+                for f in targetFiles + atlasFiles:
+                    targetFile = os.path.join(swatchesDir, f)
+                    if os.path.exists(targetFile): os.replace(targetFile, targetFile + ".bak")
+            
+            if imgPath and os.path.isfile(imgPath): self.generateSwatches(imgPath, targetFiles, False, swatchesDir)
+            if nrmlPath and os.path.isfile(nrmlPath): self.generateSwatches(nrmlPath, targetFiles, True, swatchesDir)
+            
+            blank = Image.new('RGBA', (1024, 1024), (0, 0, 0, 0))
+            for a in atlasFiles: blank.save(os.path.join(swatchesDir, a), format="PNG")
+            
+            if os.path.exists(targetTexZip): os.remove(targetTexZip)
+            subprocess.run([szPath, "a", "-tzip", compFlag, targetTexZip, "."], cwd=texTemp, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            shutil.rmtree(texTemp)
+
+            if getattr(self, "glossyVar", ctk.BooleanVar(value=False)).get():
+                self.log(f"Processing {os.path.basename(targetMatZip)}...")
+                matTemp = tempfile.mkdtemp()
                 
-                swatches_dir = os.path.join(temp_dir, "plates", "swatches")
-                os.makedirs(swatches_dir, exist_ok=True)
-
-                if os.path.exists(target_zip):
-                    self.log("Existing Textures.zip found. Extracting and merging...")
-                    subprocess.run([sz_path, "x", target_zip, f"-o{temp_dir}"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
-                    
-                    if self.current_backup_var.get():
-                        self.log("Backing up originals to .bak...")
-                        for f in target_files + atlas_files:
-                            target_file = os.path.join(swatches_dir, f)
-                            if os.path.exists(target_file):
-                                os.replace(target_file, target_file + ".bak")
+                if os.path.exists(targetMatZip):
+                    subprocess.run([szPath, "x", targetMatZip, f"-o{matTemp}", "-y"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                
+                platesDir = os.path.join(matTemp, "plates")
+                os.makedirs(platesDir, exist_ok=True)
+                
+                anyAdded = False
+                if selectedRegion == "EU & UK":
+                    euSrc = resourcePath("eu_glossy.materialbin")
+                    euTargets = ["plate_base.materialbin", "plate_base_uk_front.materialbin", "plateuk_base.materialbin", "plateeu_base_he.materialbin"]
+                    if os.path.exists(euSrc):
+                        for name in euTargets:
+                            shutil.copyfile(euSrc, os.path.join(platesDir, name))
+                            self.log(f"✓ {name}")
+                        anyAdded = True
                 else:
-                    self.log("No Textures.zip found. Creating a new one...")
-
-                self.log("Generating new plates...")
-                if img_path and os.path.isfile(img_path): self.generateSwatches(img_path, target_files, False, swatches_dir)
-                if nrml_path and os.path.isfile(nrml_path): self.generateSwatches(nrml_path, target_files, True, swatches_dir)
-
-                blank = Image.new('RGBA', (1024, 1024), (0, 0, 0, 0))
-                for a in atlas_files: blank.save(os.path.join(swatches_dir, a), format="PNG")
-
-                self.log("Zipping plates folder...")
-                if os.path.exists(target_zip): os.remove(target_zip)
-                subprocess.run([sz_path, "a", "-tzip", comp_flag, target_zip, f"{temp_dir}\\*"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
-
-                shutil.rmtree(temp_dir)
-                self.is_compiling = False
-                self.log("Build complete!")
-                if not is_silent:
-                    self.after(0, lambda: messagebox.showinfo("Success", "Generation Complete!"))
+                    usSrc = resourcePath("us_glossy.materialbin")
+                    usTargets = ["plateus_base.materialbin", "plateus_base_he.materialbin", "plateus_base_front.materialbin"]
+                    if os.path.exists(usSrc):
+                        for name in usTargets:
+                            shutil.copyfile(usSrc, os.path.join(platesDir, name))
+                            self.log(f"✓ {name}")
+                        anyAdded = True
                 
+                if anyAdded:
+                    if os.path.exists(targetMatZip): os.remove(targetMatZip)
+                    subprocess.run([szPath, "a", "-tzip", compFlag, targetMatZip, "."], cwd=matTemp, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                    self.log("Materials.zip update complete!")
+                shutil.rmtree(matTemp)
+
+            self.is_compiling = False
+            self.total_compiled += 1
+            self.saveConfig(silent=True)
+            self.log("Build complete!")
+            if not isSilent: self.after(0, lambda: messagebox.showinfo("Success", "Generation Complete!"))
         except Exception as e:
             self.is_compiling = False
             self.after(0, lambda err=e: messagebox.showerror("Generation Error", f"An error occurred:\n{err}"))
@@ -2707,9 +2699,9 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                     self.preset_bottom_row.pack_forget()
                 self.preset_output_container.pack(in_=self.preset_top_row, side="left", fill="x", expand=True)
 
-            if getattr(self, "output_mode_var", None) and self.output_mode_var.get() != "Global (Textures.zip)":
-                self.output_mode_var.set("Global (Textures.zip)")
-                self.toggleOutputMode("Global (Textures.zip)")
+            if getattr(self, "output_mode_var", None) and self.output_mode_var.get() != "Global":
+                self.output_mode_var.set("Global")
+                self.toggleOutputMode("Global")
         else:
             if hasattr(self, "mode_row") and hasattr(self, "output_label") and not self.mode_row.winfo_manager():
                 self.mode_row.pack(fill="x", padx=20, pady=(0, 10), before=self.output_label)
@@ -2735,6 +2727,9 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             
         if value == "Latest (Direct Zip)":
             self.output_label.configure(text="Textures.zip Path:")
+            if hasattr(self, "history_output_label"): self.history_output_label.configure(text="Textures.zip Path:")
+            if hasattr(self, "preset_output_label"): self.preset_output_label.configure(text="Textures.zip Path:")
+            
             self.help_text_label.configure(text=r"Select your original Textures.zip file in Forza Horizon 5\Content\media\cars\_library")
             self.sub_help_text_label.place_forget()
             
@@ -2744,13 +2739,17 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
 
         else:
             self.output_label.configure(text="Export Folder:")
+            if hasattr(self, "history_output_label"): self.history_output_label.configure(text="Export Folder:")
+            if hasattr(self, "preset_output_label"): self.preset_output_label.configure(text="Export Folder:")
+            
             self.help_text_label.configure(text=r"Select your _library folder at Forza Horizon 5\media\Stripped\MediaOverride\RC0\Cars\_library.     If you don't have a Cars folder in RC0, you must create one along with the '_library' folder inside of it.")
-            self.sub_help_text_label.configure(text="Automatically merges into any existing Textures.zip you might have from other mods. ")
+            self.sub_help_text_label.configure(text="Automatically merges into any existing Textures.zip/Materials.zip you might have from other mods. ")
             self.sub_help_text_label.place(x=20, rely=0.84)
             
             if hasattr(self, 'default_out_var'):
                 old_def = self.default_out_var.get()
                 self.gen_output_dir_var.set(old_def if old_def != "Not Selected" else "Not Selected")
+        self.updateMaterialsZipVisibility()
 
     def setupHistoryPage(self):
         ctk.CTkLabel(self.history_page, text="Plate History", font=ctk.CTkFont(size=32, weight="bold")).pack(anchor="w", pady=(0, 5))
@@ -2764,8 +2763,26 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             justify="left"
         ).pack(anchor="w", padx=(0, 20), pady=(0, 20))
         
-        self.cart_status = ctk.CTkLabel(self.history_page, text="No Plates Selected", font=ctk.CTkFont(size=14), text_color=COLORS["accent_primary"])
-        self.cart_status.pack(anchor="w", pady=(0, 10))
+        self.history_cart_row = ctk.CTkFrame(self.history_page, fg_color="transparent")
+        self.history_cart_row.pack(fill="x", pady=(0, 10))
+
+        self.cart_status = ctk.CTkLabel(self.history_cart_row, text="No Plates Selected", font=ctk.CTkFont(size=14), text_color=COLORS["accent_primary"])
+        self.cart_status.pack(side="left")
+
+        hist_switches_frame = ctk.CTkFrame(self.history_cart_row, fg_color="transparent")
+        hist_switches_frame.pack(side="right")
+
+        self.history_glossy_switch = ctk.CTkSwitch(
+            hist_switches_frame, text="Glossy Finish", variable=self.glossyVar,
+            button_color=COLORS["accent_primary"], command=self.updateMaterialsZipVisibility
+        )
+        self.history_glossy_switch.pack(side="left", padx=(0, 15))
+
+        self.history_backup_switch = ctk.CTkSwitch(
+            hist_switches_frame, text="Create Backups", variable=self.current_backup_var,
+            button_color=COLORS["accent_primary"], command=self.onBackupToggle
+        )
+        self.history_backup_switch.pack(side="left")
 
         self.history_settings_frame = ctk.CTkFrame(self.history_page, fg_color="transparent")
         self.history_settings_frame.pack(fill="x", pady=(0, 15))
@@ -2777,11 +2794,11 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
 
         ctk.CTkLabel(self.history_top_row, text="Version:", font=ctk.CTkFont(size=13, weight="bold")).pack(side="left", padx=(0, 10))
         
-        history_version_border = ctk.CTkFrame(self.history_top_row, fg_color=COLORS["bg_secondary"], border_width=2, border_color=COLORS["border"], corner_radius=6)
-        history_version_border.pack(side="left", padx=(0, 20))
+        historyVersionBorder = ctk.CTkFrame(self.history_top_row, fg_color=COLORS["bg_secondary"], border_width=2, border_color=COLORS["border"], corner_radius=6)
+        historyVersionBorder.pack(side="left", padx=(0, 20))
         
         ctk.CTkOptionMenu(
-            history_version_border, 
+            historyVersionBorder, 
             variable=self.version_var, 
             values=["Latest (Direct Zip)", "1.634.818.0"], 
             width=170, 
@@ -2799,28 +2816,43 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         
         ctk.CTkLabel(self.history_mode_container, text="Mode:", font=ctk.CTkFont(size=13, weight="bold")).pack(side="left", padx=(0, 10))
         
-        history_mode_border = ctk.CTkFrame(self.history_mode_container, fg_color=COLORS["bg_secondary"], border_width=2, border_color=COLORS["border"], corner_radius=6)
-        history_mode_border.pack(side="left", padx=(0, 20))
+        historyModeBorder = ctk.CTkFrame(self.history_mode_container, fg_color=COLORS["bg_secondary"], border_width=2, border_color=COLORS["border"], corner_radius=6)
+        historyModeBorder.pack(side="left", padx=(0, 5))
         
         ctk.CTkOptionMenu(
-            history_mode_border, variable=self.output_mode_var, 
-            values=["Global (Textures.zip)", "Car-Specific (Car Mod .zip)"], width=170, 
+            historyModeBorder, variable=self.output_mode_var, 
+            values=["Global", "Car-Specific (Car.zip)"], width=210,
             fg_color=COLORS["bg_secondary"], button_color=COLORS["bg_secondary"], 
             button_hover_color=COLORS["border"], dropdown_fg_color=COLORS["bg_card"], 
             dropdown_hover_color=COLORS["border"], dropdown_text_color=COLORS["text_primary"], 
             corner_radius=4, command=self.toggleOutputMode
         ).pack(padx=2, pady=2)
-
+        
         self.history_output_container = ctk.CTkFrame(self.history_settings_frame, fg_color="transparent")
-        self.history_output_label = ctk.CTkLabel(self.history_output_container, text="Output:", font=ctk.CTkFont(size=13, weight="bold"))
+        
+        historyTexRow = ctk.CTkFrame(self.history_output_container, fg_color="transparent")
+        historyTexRow.pack(fill="x")
+        
+        self.history_output_label = ctk.CTkLabel(historyTexRow, text="Textures.zip Path:", font=ctk.CTkFont(size=13, weight="bold"))
         self.history_output_label.pack(side="left", padx=(0, 10))
         
-        self.history_dir_entry = ctk.CTkEntry(self.history_output_container, textvariable=self.gen_output_dir_var, fg_color=COLORS["bg_secondary"], border_color=COLORS["border"])
+        self.history_dir_entry = ctk.CTkEntry(historyTexRow, textvariable=self.gen_output_dir_var, fg_color=COLORS["bg_secondary"], border_color=COLORS["border"])
         self.history_dir_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
         self.history_dir_entry.bind("<Button-1>", lambda e: self.browseGenOutputDir())
         
-        ctk.CTkButton(self.history_output_container, text="Browse", width=80, fg_color=COLORS["bg_secondary"], hover_color=COLORS["border"], command=self.browseGenOutputDir).pack(side="left")
+        ctk.CTkButton(historyTexRow, text="Browse", width=80, fg_color=COLORS["bg_secondary"], hover_color=COLORS["border"], command=self.browseGenOutputDir).pack(side="left", padx=(0, 10))
 
+        self.histMaterialsZipRow = ctk.CTkFrame(self.history_output_container, fg_color="transparent")
+        
+        histMatLabel = ctk.CTkLabel(self.histMaterialsZipRow, text="Materials.zip Path:", font=ctk.CTkFont(size=13, weight="bold"))
+        histMatLabel.pack(side="left", padx=(0, 10))
+        
+        self.histMaterialsEntry = ctk.CTkEntry(self.histMaterialsZipRow, textvariable=self.materialsZipVar, fg_color=COLORS["bg_secondary"], border_color=COLORS["border"])
+        self.histMaterialsEntry.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        self.histMaterialsEntry.bind("<Button-1>", lambda e: self.browseMaterialsZip())
+        
+        ctk.CTkButton(self.histMaterialsZipRow, text="Browse", width=80, fg_color=COLORS["bg_secondary"], hover_color=COLORS["border"], command=self.browseMaterialsZip).pack(side="left", padx=(0, 10))
+        
         self.cart_btn = ctk.CTkButton(
             self.history_page, 
             text=" COMPILE SELECTED", 
@@ -2959,7 +2991,7 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             except Exception as e:
                 self.after(0, lambda err=e: messagebox.showerror("Generation Error", f"An error occurred:\n{err}"))
             finally:
-                self.after(0, lambda: self.cart_btn.configure(state="normal", text="⚙️ COMPILE CART"))
+                self.after(0, lambda: self.cart_btn.configure(state="normal", text=" COMPILE CART"))
                 
         threading.Thread(target=process, daemon=True).start()
 
@@ -3742,6 +3774,42 @@ del "%~f0"
                 self.ui_queue.put(lambda: messagebox.showerror("Error", f"Failed to generate map: {e}"))
         threading.Thread(target=process, daemon=True).start()
 
+    def updateMaterialsZipVisibility(self, *args):
+        isLatest = self.version_var.get() == "Latest (Direct Zip)"
+        isGlobal = getattr(self, "output_mode_var", None) and self.output_mode_var.get() == "Global"
+        isGlossy = getattr(self, "glossyVar", ctk.BooleanVar(value=False)).get()
+        showRow = isLatest and isGlobal and isGlossy
+
+        if hasattr(self, "materialsInputRow"):
+            if showRow and not self.materialsInputRow.winfo_manager():
+                self.materialsLabel.pack(anchor="w", padx=20, pady=(5, 0), after=self.gen_dir_entry.master)
+                self.materialsHelp.pack(anchor="w", padx=20, pady=(0, 5), after=self.materialsLabel)
+                self.materialsInputRow.pack(fill="x", padx=20, after=self.materialsHelp)
+            elif not showRow and self.materialsInputRow.winfo_manager():
+                self.materialsLabel.pack_forget()
+                self.materialsHelp.pack_forget()
+                self.materialsInputRow.pack_forget()
+
+        if hasattr(self, "histMaterialsZipRow"):
+            if showRow and not self.histMaterialsZipRow.winfo_manager():
+                self.histMaterialsZipRow.pack(fill="x", pady=(10, 0), before=self.cart_btn)
+            elif not showRow and self.histMaterialsZipRow.winfo_manager():
+                self.histMaterialsZipRow.pack_forget()
+
+        if hasattr(self, "presetMaterialsZipRow"):
+            if showRow and not self.presetMaterialsZipRow.winfo_manager():
+                self.presetMaterialsZipRow.pack(fill="x", pady=(10, 0), before=self.preset_cart_btn)
+            elif not showRow and self.presetMaterialsZipRow.winfo_manager():
+                self.presetMaterialsZipRow.pack_forget()
+
+    def browseMaterialsZip(self):
+        initial = self.last_dirs.get("out", "/")
+        file = filedialog.askopenfilename(filetypes=[("Zip Archives", "*.zip")], initialdir=initial, title="Select Materials.zip")
+        if file:
+            self.last_dirs["out"] = os.path.dirname(file)
+            self.materialsZipVar.set(os.path.normpath(file))
+            self.saveConfig(silent=True)
+
     def setupPresetsPage(self):
         ctk.CTkLabel(self.presets_page, text="Preset Plates", font=ctk.CTkFont(size=32, weight="bold")).pack(anchor="w", pady=(0, 5))
         
@@ -3754,8 +3822,26 @@ del "%~f0"
             justify="left"
         ).pack(anchor="w", padx=(0, 20), pady=(0, 20))
         
-        self.preset_cart_status = ctk.CTkLabel(self.presets_page, text="No Presets Selected", font=ctk.CTkFont(size=14), text_color=COLORS["accent_primary"])
-        self.preset_cart_status.pack(anchor="w", pady=(0, 10))
+        self.preset_cart_row = ctk.CTkFrame(self.presets_page, fg_color="transparent")
+        self.preset_cart_row.pack(fill="x", pady=(0, 10))
+
+        self.preset_cart_status = ctk.CTkLabel(self.preset_cart_row, text="No Presets Selected", font=ctk.CTkFont(size=14), text_color=COLORS["accent_primary"])
+        self.preset_cart_status.pack(side="left")
+
+        preset_switches_frame = ctk.CTkFrame(self.preset_cart_row, fg_color="transparent")
+        preset_switches_frame.pack(side="right")
+
+        self.preset_glossy_switch = ctk.CTkSwitch(
+            preset_switches_frame, text="Glossy Finish", variable=self.glossyVar,
+            button_color=COLORS["accent_primary"], command=self.updateMaterialsZipVisibility
+        )
+        self.preset_glossy_switch.pack(side="left", padx=(0, 15))
+
+        self.preset_backup_switch = ctk.CTkSwitch(
+            preset_switches_frame, text="Create Backups", variable=self.current_backup_var,
+            button_color=COLORS["accent_primary"], command=self.onBackupToggle
+        )
+        self.preset_backup_switch.pack(side="left")
 
         self.preset_settings_frame = ctk.CTkFrame(self.presets_page, fg_color="transparent")
         self.preset_settings_frame.pack(fill="x", pady=(0, 15))
@@ -3767,11 +3853,11 @@ del "%~f0"
 
         ctk.CTkLabel(self.preset_top_row, text="Version:", font=ctk.CTkFont(size=13, weight="bold")).pack(side="left", padx=(0, 10))
         
-        preset_version_border = ctk.CTkFrame(self.preset_top_row, fg_color=COLORS["bg_secondary"], border_width=2, border_color=COLORS["border"], corner_radius=6)
-        preset_version_border.pack(side="left", padx=(0, 20))
+        presetVersionBorder = ctk.CTkFrame(self.preset_top_row, fg_color=COLORS["bg_secondary"], border_width=2, border_color=COLORS["border"], corner_radius=6)
+        presetVersionBorder.pack(side="left", padx=(0, 20))
         
         ctk.CTkOptionMenu(
-            preset_version_border, variable=self.version_var, values=["Latest (Direct Zip)", "1.634.818.0"], 
+            presetVersionBorder, variable=self.version_var, values=["Latest (Direct Zip)", "1.634.818.0"], 
             width=170, fg_color=COLORS["bg_secondary"], button_color=COLORS["bg_secondary"], 
             button_hover_color=COLORS["border"], dropdown_fg_color=COLORS["bg_card"], 
             dropdown_hover_color=COLORS["border"], dropdown_text_color=COLORS["text_primary"], 
@@ -3782,28 +3868,43 @@ del "%~f0"
         
         ctk.CTkLabel(self.preset_mode_container, text="Mode:", font=ctk.CTkFont(size=13, weight="bold")).pack(side="left", padx=(0, 10))
         
-        preset_mode_border = ctk.CTkFrame(self.preset_mode_container, fg_color=COLORS["bg_secondary"], border_width=2, border_color=COLORS["border"], corner_radius=6)
-        preset_mode_border.pack(side="left", padx=(0, 20))
+        presetModeBorder = ctk.CTkFrame(self.preset_mode_container, fg_color=COLORS["bg_secondary"], border_width=2, border_color=COLORS["border"], corner_radius=6)
+        presetModeBorder.pack(side="left", padx=(0, 5))
         
         ctk.CTkOptionMenu(
-            preset_mode_border, variable=self.output_mode_var, 
-            values=["Global (Textures.zip)", "Car-Specific (Car Mod .zip)"], width=170, 
+            presetModeBorder, variable=self.output_mode_var, 
+            values=["Global", "Car-Specific (Car.zip)"], width=210,
             fg_color=COLORS["bg_secondary"], button_color=COLORS["bg_secondary"], 
             button_hover_color=COLORS["border"], dropdown_fg_color=COLORS["bg_card"], 
             dropdown_hover_color=COLORS["border"], dropdown_text_color=COLORS["text_primary"], 
             corner_radius=4, command=self.toggleOutputMode
         ).pack(padx=2, pady=2)
-
+        
         self.preset_output_container = ctk.CTkFrame(self.preset_settings_frame, fg_color="transparent")
-        self.preset_output_label = ctk.CTkLabel(self.preset_output_container, text="Output:", font=ctk.CTkFont(size=13, weight="bold"))
+        
+        presetTexRow = ctk.CTkFrame(self.preset_output_container, fg_color="transparent")
+        presetTexRow.pack(fill="x")
+        
+        self.preset_output_label = ctk.CTkLabel(presetTexRow, text="Textures.zip Path:", font=ctk.CTkFont(size=13, weight="bold"))
         self.preset_output_label.pack(side="left", padx=(0, 10))
         
-        self.preset_dir_entry = ctk.CTkEntry(self.preset_output_container, textvariable=self.gen_output_dir_var, fg_color=COLORS["bg_secondary"], border_color=COLORS["border"])
+        self.preset_dir_entry = ctk.CTkEntry(presetTexRow, textvariable=self.gen_output_dir_var, fg_color=COLORS["bg_secondary"], border_color=COLORS["border"])
         self.preset_dir_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
         self.preset_dir_entry.bind("<Button-1>", lambda e: self.browseGenOutputDir())
         
-        ctk.CTkButton(self.preset_output_container, text="Browse", width=80, fg_color=COLORS["bg_secondary"], hover_color=COLORS["border"], command=self.browseGenOutputDir).pack(side="left")
+        ctk.CTkButton(presetTexRow, text="Browse", width=80, fg_color=COLORS["bg_secondary"], hover_color=COLORS["border"], command=self.browseGenOutputDir).pack(side="left", padx=(0, 10))
 
+        self.presetMaterialsZipRow = ctk.CTkFrame(self.preset_output_container, fg_color="transparent")
+        
+        presetMatLabel = ctk.CTkLabel(self.presetMaterialsZipRow, text="Materials.zip Path:", font=ctk.CTkFont(size=13, weight="bold"))
+        presetMatLabel.pack(side="left", padx=(0, 10))
+        
+        self.presetMaterialsEntry = ctk.CTkEntry(self.presetMaterialsZipRow, textvariable=self.materialsZipVar, fg_color=COLORS["bg_secondary"], border_color=COLORS["border"])
+        self.presetMaterialsEntry.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        self.presetMaterialsEntry.bind("<Button-1>", lambda e: self.browseMaterialsZip())
+        
+        ctk.CTkButton(self.presetMaterialsZipRow, text="Browse", width=80, fg_color=COLORS["bg_secondary"], hover_color=COLORS["border"], command=self.browseMaterialsZip).pack(side="left", padx=(0, 10))
+        
         self.preset_cart_btn = ctk.CTkButton(
             self.presets_page, 
             text=" COMPILE PRESETS", 
@@ -3811,7 +3912,7 @@ del "%~f0"
             command=self.compilePresets, 
             fg_color=COLORS["accent_secondary"], 
             height=50,
-            width=0,
+            width=1200,
             font=ctk.CTkFont(size=14, weight="bold")
         )
         self.preset_cart_btn.pack(fill="x", padx=0, pady=(0, 20))
@@ -3823,7 +3924,7 @@ del "%~f0"
             fg_color=COLORS["bg_card"], 
             hover_color=COLORS["accent_danger"], 
             height=40, 
-            width=0,
+            width=1200,
             font=ctk.CTkFont(size=14, weight="bold"), 
             command=self.runRestore
         )
@@ -3958,7 +4059,8 @@ del "%~f0"
                         "img": self.preset_cart['eu']['img'], 
                         "nrml": self.preset_cart['eu']['nrml'],
                         "name": self.preset_cart['eu']['name'],
-                        "is_preset": True
+                        "is_preset": True,
+                        "glossy": self.glossyVar.get()
                     })
                     added_to_history = True
                     
@@ -3970,7 +4072,8 @@ del "%~f0"
                         "img": self.preset_cart['us']['img'], 
                         "nrml": self.preset_cart['us']['nrml'],
                         "name": self.preset_cart['us']['name'],
-                        "is_preset": True
+                        "is_preset": True,
+                        "glossy": self.glossyVar.get()
                     })
                     added_to_history = True
                 
@@ -4093,11 +4196,8 @@ del "%~f0"
         self.changelog_frame.grid_columnconfigure(1, weight=1)
 
         changes = [
-            ("New Car-Specific Output Mode", "Added a new mode in the Presets page that allows you to compile plates into one specific car instead of doing it globally."),
-            ("New Remove Buttons", "Added remove buttons to all dropboxes."),
-            ("UI Bugfixes and Improvements", "Resolved several minor UI issues across the tool."),
-            ("Dynamic Blur Feature", "Added a new dynamic blur feature for height maps."),
-            ("New Plate Pack Function", "Share setups instantly using '.plate' files (image, map, and region). Export from History, import in the Compiler, or double-click files to launch the app (enable file association in Settings)")
+            ("New 'Glossy Plates' Toggle", "Added an option to apply a glossy finish to plates, which can be toggled anywhere you compile plates."),
+            ("Improved Car-Specific Logic", "Enhanced the logic for the path naming. Now works with cars that have long file names. (Technically only up to a certain point, but you should be good)"),
         ]
 
         for idx, (title, desc) in enumerate(changes):
@@ -4489,7 +4589,4 @@ if __name__ == "__main__":
 
     threading.Thread(target=listenForFiles, daemon=True).start()
     
-    app.mainloop()
-
-    app = PlateMakerApp()
     app.mainloop()
