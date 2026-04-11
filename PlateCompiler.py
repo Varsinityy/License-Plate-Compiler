@@ -56,7 +56,7 @@ COLORS = {
     "text_muted": "#71717a",
 }
 
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.6.1"
 
 EU_UK_FILES = [
     "plate_eu1_base_diff_82ddf780-5958-4917-807d-31a9a76e08fc.swatchbin",
@@ -90,7 +90,8 @@ US_MX_FILES = [
     "plate_mx_front_base_mask_6f622e53-b251-449e-8dc2-b328a9863246.swatchbin",
     "plate_us2_base_diff_eeb5bd05-1328-4c59-9797-c894e1bf52c6.swatchbin",
     "plate_us2_base_mask_e8ffc6dc-c3a5-47b3-8f2a-f2420faa4827.swatchbin",
-    "plate_us2_base_nrml_556f2b0f-4117-4d2c-8350-36b737784fe7.swatchbin"
+    "plate_us2_base_nrml_556f2b0f-4117-4d2c-8350-36b737784fe7.swatchbin",
+    "plate_mx_front_base_nrml_156822c2-2d3b-4426-a975-77592427813f.swatchbin"
 ]
 
 US_MX_ATLAS_FILES = [
@@ -1747,7 +1748,7 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         )
         self.blurInfoLabel.pack(side="left", padx=(10, 0))
 
-        self.mmBlurSwitch.bind("<Enter>", lambda e: self.blurInfoLabel.configure(text="Helps remove the pixely look. Still in development. "))
+        self.mmBlurSwitch.bind("<Enter>", lambda e: self.blurInfoLabel.configure(text="Helps remove the pixely look. Still in development, may not even work currently. "))
         self.mmBlurSwitch.bind("<Leave>", lambda e: self.blurInfoLabel.configure(text=""))
 
         self.slider_container = ctk.CTkFrame(self.settings_box, fg_color="transparent")
@@ -1940,28 +1941,31 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             save_path
         ), daemon=True).start()
 
+    def processNormalMap(self, imgPath, maskPath, bStr, bBlur, bDir, mStr, mBlur, mDir, savePath):
+        try:
+            img = Image.open(imgPath)
+            baseMap = self.createNormalMapData(img, bStr, bBlur, bDir)
+
+            if maskPath and os.path.exists(maskPath):
+                maskImg = Image.open(maskPath).convert('L').resize(baseMap.size)
+                maskMap = self.createNormalMapData(img, mStr, mBlur, mDir)
+                finalMap = Image.composite(maskMap, baseMap, maskImg)
+            else:
+                finalMap = baseMap
+
+            finalMap = self.applyOutputBlur(finalMap, bStr, bBlur)
+            finalMap.save(savePath)
+
+            self.ui_queue.put(lambda: self.onExportComplete(True, savePath))
+        except Exception as e:
+            self.ui_queue.put(lambda err=e: self.onExportComplete(False, str(err)))
+
     def exportPaintedMap(self, source_path, dest_path):
         try:
             shutil.copy2(source_path, dest_path)
             self.after(0, lambda: self.onExportComplete(True, dest_path))
         except Exception as e:
             self.after(0, lambda: self.onExportComplete(False, str(e)))
-
-    def generatePreviewThread(self, bStr, bBlur, bDir, mStr, mBlur, mDir, maskPath):
-        baseMap = self.createNormalMapData(self.mm_preview_thumb, bStr, bBlur, bDir)
-        if maskPath and os.path.exists(maskPath):
-            try:
-                maskImg = Image.open(maskPath).convert('L').resize(baseMap.size)
-                maskMap = self.createNormalMapData(self.mm_preview_thumb, mStr, mBlur, mDir)
-                resImg = Image.composite(maskMap, baseMap, maskImg)
-            except (OSError, ValueError):
-                resImg = baseMap 
-        else:
-            resImg = baseMap
-        
-        resImg = self.applyOutputBlur(resImg, bStr, bBlur)
-        ctkImg = ctk.CTkImage(light_image=resImg, dark_image=resImg, size=resImg.size)
-        self.ui_queue.put(lambda: self.preview_label.configure(image=ctkImg, text=""))
 
     def getDynamicBlurRadius(self, intensity, smoothness, width):
         if not self.mmBlurEnabledVar.get():
@@ -2072,10 +2076,10 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         comp_frame = ctk.CTkFrame(self.settings_page, fg_color=COLORS["bg_secondary"], corner_radius=12, border_width=1, border_color=COLORS["border"])
         comp_frame.pack(fill="x", pady=(10, 0), ipady=5)
         
-        self.default_out_latest_var = ctk.StringVar(value="C:\XboxGames\Forza Horizon 5\Content\media\cars\_library\Textures.zip")
+        self.default_out_latest_var = ctk.StringVar(value=r"C:\XboxGames\Forza Horizon 5\Content\media\cars\_library\Textures.zip")
         self.createPathSetting(comp_frame, "Default Output - Latest (_library Textures.zip):", self.default_out_latest_var, mode="zip")
         
-        self.default_out_var = ctk.StringVar(value="C:\Games\Forza Horizon 5\media\Stripped\MediaOverride\RC0\Cars\_library")
+        self.default_out_var = ctk.StringVar(value=r"C:\Games\Forza Horizon 5\media\Stripped\MediaOverride\RC0\Cars\_library")
         self.createPathSetting(comp_frame, "Default Output - v1.634 (_library Folder):", self.default_out_var, mode="dir")
         
         comp_row = ctk.CTkFrame(comp_frame, fg_color="transparent")
@@ -4415,26 +4419,6 @@ del "%~f0"
         except Exception as e:
             self.setActivePlateUI("eu", None, "Error Reading Plates")
             self.setActivePlateUI("us", None, "Error Reading Plates")
-            
-    def setActivePlateUI(self, region, img, fallback_text):
-        label = getattr(self, f"active_{region}_label", None)
-        if not label: return
-        
-        if img:
-            try:
-                w, h = img.size
-                aspect = w / h
-                target_h = 60
-                target_w = int(target_h * aspect)
-                if target_w > 250: target_w = 250
-                
-                img.thumbnail((target_w, target_h))
-                ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(target_w, target_h))
-                self.ui_queue.put(lambda: label.configure(image=ctk_img, text=""))
-            except (AttributeError, ValueError, OSError):
-                self.ui_queue.put(lambda: label.configure(image=None, text="Preview Error"))
-        else:
-            self.ui_queue.put(lambda: label.configure(image=None, text=fallback_text))
 
     def animateStatusDot(self):
         t = time.time() * 2.5 
@@ -4535,12 +4519,6 @@ del "%~f0"
         except queue.Empty:
             pass
         self.after(100, self.processUIQueue)
-
-    def getDynamicBlurRadius(self, intensity, smoothness, width):
-        if not self.mmBlurEnabledVar.get():
-            return 0
-        resScale = width / 4000.0
-        return (intensity / 10.0) * (smoothness / 2.5) * 7.0 * resScale
 
     def applyOutputBlur(self, img, intensity, smoothness):
         radius = self.getDynamicBlurRadius(intensity, smoothness, img.size[0])
