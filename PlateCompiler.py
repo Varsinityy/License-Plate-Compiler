@@ -57,7 +57,7 @@ COLORS = {
     "text_muted": "#71717a",
 }
 
-APP_VERSION = "1.6.1"
+APP_VERSION = "1.7.0"
 
 EU_UK_FILES = [
     "plate_eu1_base_diff_82ddf780-5958-4917-807d-31a9a76e08fc.swatchbin",
@@ -1391,6 +1391,12 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                 "nrml": resourcePath("japanese plate 1 nrml.png")
             },
             {
+                "name": "Japanese Plate 2", 
+                "region": "US & MX", 
+                "img": resourcePath("japanese plate 2 diff.png"), 
+                "nrml": resourcePath("japanese plate 2 nrml.png")
+            },
+            {
                 "name": "Texas Plate White", 
                 "region": "US & MX", 
                 "img": resourcePath("texas plate white.png"), 
@@ -1401,6 +1407,12 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                 "region": "US & MX", 
                 "img": resourcePath("texas plate black.png"), 
                 "nrml": resourcePath("texas white nrml.png")
+            },
+            {
+                "name": "French Plate", 
+                "region": "EU & UK", 
+                "img": resourcePath("france diff.png"), 
+                "nrml": resourcePath("france nrml.png")
             }
         ]
 
@@ -1549,7 +1561,7 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             tempDir = os.path.join(tempfile.gettempdir(), "imported_plate_pack")
             if os.path.exists(tempDir):
                 shutil.rmtree(tempDir)
-            os.makedirs(tempDir, existOk=True)
+            os.makedirs(tempDir, exist_ok=True)
 
             with zipfile.ZipFile(filePath, 'r') as zf:
                 zf.extractall(tempDir)
@@ -2440,32 +2452,60 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                 carId = os.path.splitext(os.path.basename(outputBase))[0]
                 texturesDir = os.path.join(tempDir, "textures")
                 materialsDir = os.path.join(tempDir, "materials")
-                os.makedirs(texturesDir, existOk=True)
-                os.makedirs(materialsDir, existOk=True)
+                os.makedirs(texturesDir, exist_ok=True)
+                os.makedirs(materialsDir, exist_ok=True)
                 prefix = "euplate" if selectedRegion == "EU & UK" else "usplate"
+                
                 if imgPath and os.path.isfile(imgPath):
                     shutil.copyfile(imgPath, os.path.join(texturesDir, f"{prefix}_diff.swatchbin"))
                 if nrmlPath and os.path.isfile(nrmlPath):
                     shutil.copyfile(nrmlPath, os.path.join(texturesDir, f"{prefix}_nrml.swatchbin"))
+                    
                 isGlossy = getattr(self, "glossyVar", ctk.BooleanVar(value=False)).get()
                 sourceMatName = ("eu_glossy.materialbin" if selectedRegion == "EU & UK" else "us_glossy.materialbin") if isGlossy else ("eu.materialbin" if selectedRegion == "EU & UK" else "us.materialbin")
                 baseMatPath = resourcePath(sourceMatName)
+                
+                usfMatName = "usf_glossy.materialbin" if isGlossy else "usf.materialbin"
+                baseUsfMatPath = resourcePath(usfMatName)
+                
                 if os.path.exists(baseMatPath):
                     destMatName = "eu.materialbin" if selectedRegion == "EU & UK" else "us.materialbin"
                     shutil.copy(baseMatPath, os.path.join(materialsDir, destMatName))
-                    modelPath = None
+                    
+                    if selectedRegion == "US & MX" and os.path.exists(baseUsfMatPath):
+                        shutil.copy(baseUsfMatPath, os.path.join(materialsDir, "usf.materialbin"))
+                        self.patchBinaryRegex(os.path.join(materialsDir, "usf.materialbin"), b'Game:\\\\[mM]edia\\\\cars\\\\_library\\\\[a-zA-Z0-9_\\\\.\\s-]+?\\.swatchbin', lambda s, l: (f"Game:\\Media\\cars\\{carId}\\textures\\{prefix}_diff.swatchbin" if "diff" in s.lower() else f"Game:\\Media\\cars\\{carId}\\textures\\{prefix}_nrml.swatchbin" if "nrml" in s.lower() else None))
+                    
+                    modelPaths = []
+                    targetPlate = "plateeu" if selectedRegion == "EU & UK" else "plateus"
                     for root, dirs, files in os.walk(tempDir):
                         for f in files:
-                            if f.lower() == ("PlateEU_a.modelbin" if selectedRegion == "EU & UK" else "PlateUS_a.modelbin").lower():
-                                modelPath = os.path.join(root, f)
-                                break
-                        if modelPath: break
-                    if modelPath:
+                            fileName = f.lower()
+                            if targetPlate in fileName and fileName.endswith(".modelbin"):
+                                modelPaths.append(os.path.join(root, f))
+                    
+                    def modelPatchLogic(s, l):
+                        sLower = s.lower()
+                        
+                        if "atlas" in sLower:
+                            return None
+                            
+                        if selectedRegion == "US & MX" and "front" in sLower:
+                            return f"Game:\\Media\\cars\\{carId}\\materials\\usf.materialbin"
+                        elif "base" in sLower or "us.materialbin" in sLower or "eu.materialbin" in sLower:
+                            return f"Game:\\Media\\cars\\{carId}\\materials\\{destMatName}"
+                            
+                        return None
+                    
+                    for path in modelPaths:
                         if self.currentBackupVar.get():
-                            bakPath = modelPath + ".bak"
-                            if not os.path.exists(bakPath): shutil.copy2(modelPath, bakPath)
-                        self.patchBinaryRegex(modelPath, b'Game:\\\\[mM]edia\\\\cars\\\\[a-zA-Z0-9_\\\\.\\s-]+?\\.materialbin', lambda s, l: f"Game:\\Media\\cars\\{carId}\\materials\\{destMatName}" if any(x in s.lower() for x in ["_base.materialbin", "us.materialbin", "eu.materialbin", "plateus_.materialbin", "plateeu_.materialbin"]) else None)
+                            bakPath = path + ".bak"
+                            if not os.path.exists(bakPath): 
+                                shutil.copy2(path, bakPath)
+                        self.patchBinaryRegex(path, b'Game:\\\\[mM]edia\\\\cars\\\\[a-zA-Z0-9_\\\\.\\s-]+?\\.materialbin', modelPatchLogic)
+                        
                     self.patchBinaryRegex(os.path.join(materialsDir, destMatName), b'Game:\\\\[mM]edia\\\\cars\\\\_library\\\\[a-zA-Z0-9_\\\\.\\s-]+?\\.swatchbin', lambda s, l: (f"Game:\\Media\\cars\\{carId}\\textures\\{prefix}_diff.swatchbin" if "diff" in s.lower() else f"Game:\\Media\\cars\\{carId}\\textures\\{prefix}_nrml.swatchbin" if "nrml" in s.lower() else None))
+                
                 os.remove(outputBase)
                 subprocess.run([szPath, "a", "-tzip", compFlag, outputBase, f"{tempDir}\\*"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
                 shutil.rmtree(tempDir)
@@ -2491,7 +2531,7 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                 subprocess.run([szPath, "x", targetTexZip, f"-o{texTemp}", "-y"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
             
             swatchesDir = os.path.join(texTemp, "plates", "swatches")
-            os.makedirs(swatchesDir, existOk=True)
+            os.makedirs(swatchesDir, exist_ok=True)
             
             if self.currentBackupVar.get():
                 for f in targetFiles + atlasFiles:
@@ -2516,7 +2556,7 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                     subprocess.run([szPath, "x", targetMatZip, f"-o{matTemp}", "-y"], check=True, creationflags=subprocess.CREATE_NO_WINDOW)
                 
                 platesDir = os.path.join(matTemp, "plates")
-                os.makedirs(platesDir, existOk=True)
+                os.makedirs(platesDir, exist_ok=True)
                 
                 anyAdded = False
                 if selectedRegion == "EU & UK":
@@ -3126,7 +3166,7 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
     def checkForUpdates(self, manual=False):
         def setStatus(online):
             self.isOnline = online
-            if hasattr(self, 'status_text'):
+            if hasattr(self, 'statusText'):
                 self.statusText.configure(text=" ONLINE" if online else " OFFLINE")
 
         def task():
@@ -3285,7 +3325,7 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             lastPct = -1
             
             with open(newExe, 'wb') as f:
-                for chunk in response.iterContent(chunkSize=8192):
+                for chunk in response.iter_content(chunk_size=8192):
                     if chunk:
                         f.write(chunk)
                         downloaded += len(chunk)
@@ -3314,7 +3354,7 @@ del "%~f0"
 
         except Exception as e:
             try:
-                if 'old_exe' in locals() and 'current_exe' in locals():
+                if 'oldExe' in locals() and 'currentExe' in locals():
                     if os.path.exists(oldExe) and not os.path.exists(currentExe):
                         os.rename(oldExe, currentExe)
             except Exception:
@@ -3533,7 +3573,7 @@ del "%~f0"
             try:
                 font = ImageFont.truetype(fontPath, config["font_size"])
             except IOError:
-                font = ImageFont.loadDefault()
+                font = ImageFont.load_default()
                 print("Custom font not found. Using default.")
 
             left, top, right, bottom = font.getbbox(text)
@@ -3649,7 +3689,7 @@ del "%~f0"
                 try:
                     font = ImageFont.truetype(fontPath, config["font_size"])
                 except IOError:
-                    font = ImageFont.loadDefault()
+                    font = ImageFont.load_default()
 
                 left, top, right, bottom = font.getbbox(text)
                 textWidth = right - left
@@ -3701,7 +3741,7 @@ del "%~f0"
                 try:
                     font = ImageFont.truetype(fontPath, config["font_size"])
                 except IOError:
-                    font = ImageFont.loadDefault()
+                    font = ImageFont.load_default()
                 left, top, right, bottom = font.getbbox(text)
                 textWidth, textHeight = right - left, bottom - top
                 x, y = config["coords"][0] - (textWidth / 2), config["coords"][1] - (textHeight / 2)
@@ -3797,13 +3837,13 @@ del "%~f0"
 
         if hasattr(self, "histMaterialsZipRow"):
             if showRow and not self.histMaterialsZipRow.winfo_manager():
-                self.histMaterialsZipRow.pack(fill="x", pady=(10, 0), before=self.cartBtn)
+                self.histMaterialsZipRow.pack(fill="x", pady=(10, 0))
             elif not showRow and self.histMaterialsZipRow.winfo_manager():
                 self.histMaterialsZipRow.pack_forget()
 
         if hasattr(self, "presetMaterialsZipRow"):
             if showRow and not self.presetMaterialsZipRow.winfo_manager():
-                self.presetMaterialsZipRow.pack(fill="x", pady=(10, 0), before=self.presetCartBtn)
+                self.presetMaterialsZipRow.pack(fill="x", pady=(10, 0))
             elif not showRow and self.presetMaterialsZipRow.winfo_manager():
                 self.presetMaterialsZipRow.pack_forget()
 
@@ -4201,13 +4241,14 @@ del "%~f0"
         self.changelogFrame.grid_columnconfigure(1, weight=1)
 
         changes = [
-            ("New 'Glossy Plates' Toggle", "Added an option to apply a glossy finish to plates, which can be toggled anywhere you compile plates."),
-            ("Improved Car-Specific Logic", "Enhanced the logic for the path naming. Now works with cars that have long file names. (Technically only up to a certain point, but you should be good)"),
+            ("Front Plate Support", "Added support for applying plates to mods that utilize front plates."),
+            ("Multi-Plate Compatibility", "Enhanced logic to automatically find and apply to multiple plates on the same car."),
+            ("New Presets", "Added 2 new presets: Japanese Plate 2 and French Plate.")
         ]
 
         for idx, (title, desc) in enumerate(changes):
             ctk.CTkLabel(self.changelogFrame, text=f"• {title}:", font=ctk.CTkFont(size=13, weight="bold"), text_color=COLORS["accent_primary"]).grid(row=idx, column=0, sticky="nw", padx=(15, 10), pady=8)
-            ctk.CTkLabel(self.changelogFrame, text=desc, font=ctk.CTkFont(size=13), text_color=COLORS["text_secondary"], justify="left", wraplength=370).grid(row=idx, column=1, sticky="nw", padx=(0, 15), pady=8)
+            ctk.CTkLabel(self.changelogFrame, text=desc, font=ctk.CTkFont(size=13), text_color=COLORS["text_secondary"], justify="left", wraplength=350).grid(row=idx, column=1, sticky="nw", padx=(0, 15), pady=8)
 
         ctk.CTkLabel(self.dashboardPage, text="Recent Activity", font=ctk.CTkFont(size=18, weight="bold")).pack(anchor="w", pady=(20, 10))
         self.dashHistoryList = ctk.CTkFrame(self.dashboardPage, fg_color="transparent")
