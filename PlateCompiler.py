@@ -17,6 +17,12 @@ from io import BytesIO
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 
+try:
+    from viewport3d import Viewport3D, HAS_OPENGL
+    from modelbin_parser import parseModelbin
+except ImportError:
+    HAS_OPENGL = False
+
 def resourcePath(relativePath):
     try:
         basePath = sys._MEIPASS
@@ -57,7 +63,7 @@ COLORS = {
     "text_muted": "#71717a",
 }
 
-APP_VERSION = "1.7.0"
+APP_VERSION = "1.8.1"
 
 EU_UK_FILES = [
     "plate_eu1_base_diff_82ddf780-5958-4917-807d-31a9a76e08fc.swatchbin",
@@ -474,6 +480,15 @@ class NormalPainter(DraggableMixin, ctk.CTkToplevel):
         )
         self.btnSendComp.pack(side="right", padx=5)
 
+        self.btnSendPreview = ctk.CTkButton(
+            ctrl, 
+            text=" Send to Viewport", 
+            image=self.master.loadIcon("view.png", size=18),
+            fg_color=COLORS["accent_primary"], 
+            command=lambda: self.apply(sendToPreview=True)
+        )
+        self.btnSendPreview.pack(side="right", padx=5)
+
         self.btnSave = ctk.CTkButton(
             ctrl, 
             text=" Save Changes", 
@@ -534,8 +549,8 @@ class NormalPainter(DraggableMixin, ctk.CTkToplevel):
         self.tkImg = ImageTk.PhotoImage(self.visualImg)
         self.canvas.itemconfig(self.canvasImgId, image=self.tkImg)
 
-    def apply(self, sendToCompiler=False):
-        self.callback(self.fullImg, sendToCompiler)
+    def apply(self, sendToCompiler=False, sendToPreview=False):
+        self.callback(self.fullImg, sendToCompiler, sendToPreview)
         self.destroy()
 
 class DropZone(ctk.CTkFrame):
@@ -692,6 +707,17 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             "eu": "https://codehs.com/uploads/b344dbee8c88a9e6ea0afb7d2ef96557",
             "us": "https://codehs.com/uploads/ad7830d1aca402908e58d305be678ea8"
         }
+        self.localTemplates = {
+            "eu1": "EU1.png",
+            "eu2": "EU2.png",
+            "eu_fm2": "EU FM2.png",
+            "uk": "UK.png",
+            "us_fm1": "US FM1.png",
+            "us2": "US2.png",
+            "ushw": "USHW.png",
+            "outline": "outline.png",
+            "outline_eu": "outline eu.png"
+        }
 
         self.title("Varsinity's Plate Compiler")
         self.geometry("900x750")
@@ -740,6 +766,7 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.templatesPage = ctk.CTkScrollableFrame(self.viewContainer, fg_color=COLORS["bg_primary"])
         self.settingsPage = ctk.CTkScrollableFrame(self.viewContainer, fg_color=COLORS["bg_primary"])
         self.editorPage = ctk.CTkScrollableFrame(self.viewContainer, fg_color=COLORS["bg_primary"])
+        self.viewportPage = ctk.CTkFrame(self.viewContainer, fg_color=COLORS["bg_primary"])
 
         self.history = []
         self.cart = {"eu": None, "us": None}
@@ -762,6 +789,7 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.setupMapMakerPage()
         self.setupSettingsPage()
         self.setupEditorPage()
+        self.setupViewportPage()
 
         self.currentFrame = None
         self.loadConfig()
@@ -895,64 +923,45 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                 if res.status_code == 200:
                     img = Image.open(BytesIO(res.content))
                     self.adobeIcons[key] = ctk.CTkImage(light_image=img, dark_image=img, size=(24, 24))
-                    if key == "ps":
-                        self.psBtnEu.configure(image=self.adobeIcons["ps"], text="")
-                        self.psBtnUs.configure(image=self.adobeIcons["ps"], text="")
-                        self.psBtnOutline.configure(image=self.adobeIcons["ps"], text="") 
-                        self.psBtnOutlineEu.configure(image=self.adobeIcons["ps"], text="")
-                        self.psBtnPreview.configure(image=self.adobeIcons["ps"], text="")
-                    else:
-                        self.aiBtnEu.configure(image=self.adobeIcons["ai"], text="")
-                        self.aiBtnUs.configure(image=self.adobeIcons["ai"], text="")
-                        self.aiBtnOutline.configure(image=self.adobeIcons["ai"], text="") 
-                        self.aiBtnOutlineEu.configure(image=self.adobeIcons["ai"], text="")
-                        self.aiBtnPreview.configure(image=self.adobeIcons["ai"], text="")
+                    for tType in list(self.templateUrls.keys()) + list(self.localTemplates.keys()):
+                        btn = getattr(self, f"{tType}{key.capitalize()}Btn", None)
+                        if btn and btn.winfo_exists():
+                            btn.configure(image=self.adobeIcons[key], text="")
             except (requests.RequestException, OSError, ValueError):
                 pass
 
-        for key, url in self.templateUrls.items():
+        for tType, url in self.templateUrls.items():
             try:
                 res = requests.get(url, timeout=3)
                 if res.status_code == 200:
                     img = Image.open(BytesIO(res.content))
                     origW, origH = img.size
-                    targetW = 250 if key == "eu" else 200 
+                    targetW = 250 if "eu" in tType else 200 
                     aspectRatio = origH / origW
                     targetH = int(targetW * aspectRatio)
                     previewImg = ctk.CTkImage(light_image=img, dark_image=img, size=(targetW, targetH))
         
-                    if key == "eu":
-                        self.euPreviewLabel.configure(image=previewImg, text="")
-                    else:
-                        self.usPreviewLabel.configure(image=previewImg, text="")
+                    label = getattr(self, f"{tType}PreviewLabel", None)
+                    if label and label.winfo_exists():
+                        label.configure(image=previewImg, text="")
             except (requests.RequestException, OSError, ValueError):
                 pass
             
-        try:
-            outlinePath = resourcePath("outline.png")
-            if os.path.exists(outlinePath):
-                img = Image.open(outlinePath)
-                origW, origH = img.size
-                targetW = 200
-                targetH = int(targetW * (origH / origW))
-                previewImg = ctk.CTkImage(light_image=img, dark_image=img, size=(targetW, targetH))
-                if hasattr(self, 'outlinePreviewLabel'):
-                    self.outlinePreviewLabel.configure(image=previewImg, text="")
-        except (OSError, ValueError):
-            pass
-
-        try:
-            outlineEuPath = resourcePath("outline eu.png")
-            if os.path.exists(outlineEuPath):
-                img = Image.open(outlineEuPath)
-                origW, origH = img.size
-                targetW = 250
-                targetH = int(targetW * (origH / origW))
-                previewImg = ctk.CTkImage(light_image=img, dark_image=img, size=(targetW, targetH))
-                if hasattr(self, 'outlineEuPreviewLabel'):
-                    self.outlineEuPreviewLabel.configure(image=previewImg, text="")
-        except (OSError, ValueError):
-            pass
+        for tType, filename in self.localTemplates.items():
+            try:
+                path = resourcePath(filename)
+                if os.path.exists(path):
+                    img = Image.open(path)
+                    origW, origH = img.size
+                    targetW = 250 if "eu" in tType or "uk" in tType else 200
+                    targetH = int(targetW * (origH / origW))
+                    previewImg = ctk.CTkImage(light_image=img, dark_image=img, size=(targetW, targetH))
+                    
+                    label = getattr(self, f"{tType}PreviewLabel", None)
+                    if label and label.winfo_exists():
+                        label.configure(image=previewImg, text="")
+            except (OSError, ValueError):
+                pass
 
     def forceTaskbarPresence(self):
         try:
@@ -1081,17 +1090,20 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         self.btnTemplates = ctk.CTkButton(self.navFrame, text=" Plate Templates", image=self.loadIcon("book-dashed.png"), command=lambda: self.showPage("templates"), **tabStyle)
         self.btnTemplates.pack(fill="x", padx=15, pady=3)
 
+        self.btnPresets = ctk.CTkButton(self.navFrame, text=" Presets", image=self.loadIcon("star.png"), command=lambda: self.showPage("presets"), **tabStyle)
+        self.btnPresets.pack(fill="x", padx=15, pady=3)
+
         self.btnEditor = ctk.CTkButton(self.navFrame, text=" Plate Designer", image=self.loadIcon("square-pen.png"), command=lambda: self.showPage("editor"), **tabStyle)
         self.btnEditor.pack(fill="x", padx=15, pady=3)
 
         self.btnMapMaker = ctk.CTkButton(self.navFrame, text=" 3D Map Maker", image=self.loadIcon("map.png"), command=lambda: self.showPage("map_maker"), **tabStyle)
         self.btnMapMaker.pack(fill="x", padx=15, pady=3)
 
+        self.btn3DPreview = ctk.CTkButton(self.navFrame, text=" 3D Viewport", image=self.loadIcon("view.png"), command=lambda: self.showPage("3d_preview"), **tabStyle)
+        self.btn3DPreview.pack(fill="x", padx=15, pady=3)
+
         self.btnHistory = ctk.CTkButton(self.navFrame, text=" History", image=self.loadIcon("history.png"), command=lambda: self.showPage("history"), **tabStyle)
         self.btnHistory.pack(fill="x", padx=15, pady=3)
-
-        self.btnPresets = ctk.CTkButton(self.navFrame, text=" Presets", image=self.loadIcon("star.png"), command=lambda: self.showPage("presets"), **tabStyle)
-        self.btnPresets.pack(fill="x", padx=15, pady=3)
 
         self.btnSettings = ctk.CTkButton(self.navFrame, text=" Settings", image=self.loadIcon("settings.png"), command=lambda: self.showPage("settings"), **tabStyle)
         self.btnSettings.pack(fill="x", padx=15, pady=3)
@@ -1133,7 +1145,7 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         if getattr(self, "isAnimating", False):
             return
 
-        pageOrder = ["dashboard", "compiler", "templates", "editor", "map_maker", "history", "presets", "settings"]
+        pageOrder = ["dashboard", "compiler", "templates", "presets", "editor", "map_maker", "3d_preview", "history", "settings"]
         
         if not hasattr(self, "currentPageName"):
             self.currentPageName = "compiler"
@@ -1156,6 +1168,9 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         elif pageName == "map_maker":
             targetFrame = self.mapMakerPage
             targetBtn = self.btnMapMaker
+        elif pageName == "3d_preview":
+            targetFrame = self.viewportPage
+            targetBtn = self.btn3DPreview
         elif pageName == "templates":
             targetFrame = self.templatesPage
             targetBtn = self.btnTemplates
@@ -1176,7 +1191,7 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         if getattr(self, "currentFrame", None) == targetFrame:
             return
 
-        allTabs = [self.btnDashboard, self.btnGenerator, self.btnTemplates, self.btnEditor, self.btnMapMaker, self.btnHistory, self.btnPresets, self.btnSettings]
+        allTabs = [self.btnDashboard, self.btnGenerator, self.btnTemplates, self.btnEditor, self.btnMapMaker, self.btn3DPreview, self.btnHistory, self.btnPresets, self.btnSettings]
         for btn in allTabs:
             btn.configure(border_color=COLORS["bg_primary"])
             
@@ -1385,6 +1400,12 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                 "nrml": resourcePath("quiet plate 2 nrml.png")
             },
             {
+                "name": "Quiet Plate 3", 
+                "region": "US & MX", 
+                "img": resourcePath("quiet plate 3 diff.png"), 
+                "nrml": resourcePath("quiet plate 3 nrml.png")
+            },
+            {
                 "name": "Japanese Plate 1", 
                 "region": "US & MX", 
                 "img": resourcePath("japanese plate 1 diff.png"), 
@@ -1395,6 +1416,18 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                 "region": "US & MX", 
                 "img": resourcePath("japanese plate 2 diff.png"), 
                 "nrml": resourcePath("japanese plate 2 nrml.png")
+            },
+            {
+                "name": "Black Japanese Temp Plate", 
+                "region": "US & MX", 
+                "img": resourcePath("japanese temp plate 2 black diff.png"), 
+                "nrml": resourcePath("japanese plate nrml.png")
+            },
+            {
+                "name": "White Japanese Temp Plate", 
+                "region": "US & MX", 
+                "img": resourcePath("japanese temp plate 2 white diff.png"), 
+                "nrml": resourcePath("japanese plate nrml.png")
             },
             {
                 "name": "Texas Plate White", 
@@ -1825,8 +1858,11 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         )
         self.btnPaintMap.pack(side="left", fill="x", expand=True, padx=(5, 0))
 
+        sendFrame = ctk.CTkFrame(self.mapMakerPage, fg_color="transparent")
+        sendFrame.pack(fill="x", padx=0, pady=(5, 15))
+
         self.btnSendToCompiler = ctk.CTkButton(
-            self.mapMakerPage, 
+            sendFrame, 
             text=" SEND TO COMPILER", 
             image=self.loadIcon("package-plus.png", size=20), 
             fg_color=COLORS["accent_primary"], 
@@ -1834,7 +1870,18 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             font=ctk.CTkFont(size=14, weight="bold"), 
             command=self.sendMapToCompiler
         )
-        self.btnSendToCompiler.pack(fill="x", padx=0, pady=(5, 15))
+        self.btnSendToCompiler.pack(side="left", fill="x", expand=True, padx=(0, 5))
+
+        self.btnSendToPreview = ctk.CTkButton(
+            sendFrame, 
+            text=" SEND TO VIEWPORT", 
+            image=self.loadIcon("view.png", size=20), 
+            fg_color=COLORS["accent_primary"], 
+            height=50, 
+            font=ctk.CTkFont(size=14, weight="bold"), 
+            command=self.sendMapToPreview
+        )
+        self.btnSendToPreview.pack(side="left", fill="x", expand=True, padx=(5, 0))
 
         self.mapActionInfo = ctk.CTkLabel(self.mapMakerPage, text="", font=ctk.CTkFont(size=11, slant="italic"), text_color=COLORS["text_muted"])
         self.mapActionInfo.pack(pady=(2, 0))
@@ -1847,6 +1894,9 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
 
         self.btnSendToCompiler.bind("<Enter>", lambda e: self.mapActionInfo.configure(text="Sends source image and normal map to the compiler."))
         self.btnSendToCompiler.bind("<Leave>", lambda e: self.mapActionInfo.configure(text=""))
+
+        self.btnSendToPreview.bind("<Enter>", lambda e: self.mapActionInfo.configure(text="Sends source image and normal map to the 3D Viewport."))
+        self.btnSendToPreview.bind("<Leave>", lambda e: self.mapActionInfo.configure(text=""))
 
         self.mmStatusLabel = ctk.CTkLabel(self.mapMakerPage, text="", font=ctk.CTkFont(size=12, weight="bold"))
         self.mmStatusLabel.pack(pady=(5, 15))
@@ -1998,6 +2048,29 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             
         self.after(4000, lambda: self.mmStatusLabel.configure(text=""))
 
+    def createTemplateCard(self, parent, row, col, name, tType):
+        card = ctk.CTkFrame(parent, fg_color=COLORS["bg_secondary"], corner_radius=12, border_width=1, border_color=COLORS["border"])
+        pad_x = (0, 5) if col == 0 else (5, 0)
+        pad_y = (15, 0) if row > 0 else (0, 0)
+        card.grid(row=row, column=col, sticky="nsew", padx=pad_x, pady=pad_y)
+
+        previewLabel = ctk.CTkLabel(card, text=f"Loading Preview...")
+        previewLabel.pack(pady=(20, 10), padx=10, fill="both", expand=True)
+        
+        psBtn = ctk.CTkButton(card, text="", width=30, height=30, fg_color="transparent", hover_color=COLORS["bg_card"], image=self.adobeIcons.get("ps"), command=lambda t=tType: self.launchTemplate(t, "photoshop"))
+        psBtn.place(relx=0.96, rely=0.04, anchor="ne")
+
+        aiBtn = ctk.CTkButton(card, text="", width=30, height=30, fg_color="transparent", hover_color=COLORS["bg_card"], image=self.adobeIcons.get("ai"), command=lambda t=tType: self.launchTemplate(t, "illustrator"))
+        aiBtn.place(relx=0.84, rely=0.04, anchor="ne")
+
+        ctk.CTkLabel(card, text=name, font=ctk.CTkFont(size=14, weight="bold")).pack()
+        ctk.CTkButton(card, text="Download", fg_color=COLORS["accent_primary"], command=lambda t=tType: self.downloadTemplate(t)).pack(pady=20, padx=20, fill="x")
+
+        setattr(self, f"{tType}PreviewLabel", previewLabel)
+        setattr(self, f"{tType}PsBtn", psBtn)
+        setattr(self, f"{tType}AiBtn", aiBtn)
+        return card
+
     def setupTemplatesPage(self):
         header = ctk.CTkLabel(self.templatesPage, text="Plate Templates", font=ctk.CTkFont(family="Ubuntu", size=32, weight="bold"))
         header.pack(anchor="w", pady=(0, 20))
@@ -2007,65 +2080,33 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         cardsFrame.grid_columnconfigure(0, weight=1)
         cardsFrame.grid_columnconfigure(1, weight=1)
 
-        self.euCard = ctk.CTkFrame(cardsFrame, fg_color=COLORS["bg_secondary"], corner_radius=12, border_width=1, border_color=COLORS["border"])
-        self.euCard.grid(row=0, column=0, sticky="nsew", padx=(0, 5), pady=(0, 0))
+        templates = [
+            ("EU FM1 Plate", "eu"),
+            ("US FM1 Plate", "us_fm1"),
+            
+            ("EU FM2 Plate", "eu_fm2"),
+            ("US2 Plate", "us2"),
+            
+            ("EU1 Plate", "eu1"),
+            ("USHW Plate", "ushw"),
+            
+            ("EU2 Plate", "eu2"),
+            ("US & MX Mask", "us"),
+            
+            ("UK Plate", "uk"),
+            ("US White Outline", "outline"),
+            
+            ("EU White Outline", "outline_eu")
+        ]
 
-        self.euPreviewLabel = ctk.CTkLabel(self.euCard, text="Loading EU Preview...")
-        self.euPreviewLabel.pack(pady=(20, 10), padx=10, fill="both", expand=True)
-        
-        self.psBtnEu = ctk.CTkButton(self.euCard, text="", width=30, height=30, fg_color="transparent", hover_color=COLORS["bg_card"], command=lambda: self.launchTemplate("eu", "photoshop"))
-        self.psBtnEu.place(relx=0.96, rely=0.04, anchor="ne")
-
-        self.aiBtnEu = ctk.CTkButton(self.euCard, text="", width=30, height=30, fg_color="transparent", hover_color=COLORS["bg_card"], command=lambda: self.launchTemplate("eu", "illustrator"))
-        self.aiBtnEu.place(relx=0.84, rely=0.04, anchor="ne")
-
-        ctk.CTkLabel(self.euCard, text="EU & UK Plate", font=ctk.CTkFont(size=14, weight="bold")).pack()
-        ctk.CTkButton(self.euCard, text="Download", fg_color=COLORS["accent_primary"], command=lambda: self.downloadTemplate("eu")).pack(pady=20, padx=20, fill="x")
-
-        self.usCard = ctk.CTkFrame(cardsFrame, fg_color=COLORS["bg_secondary"], corner_radius=12, border_width=1, border_color=COLORS["border"])
-        self.usCard.grid(row=0, column=1, sticky="nsew", padx=(5, 0), pady=(0, 0))
-
-        self.usPreviewLabel = ctk.CTkLabel(self.usCard, text="Loading US Preview...")
-        self.usPreviewLabel.pack(pady=(20, 10), padx=10, fill="both", expand=True)
-        
-        self.psBtnUs = ctk.CTkButton(self.usCard, text="", width=30, height=30, fg_color="transparent", hover_color=COLORS["bg_card"], command=lambda: self.launchTemplate("us", "photoshop"))
-        self.psBtnUs.place(relx=0.96, rely=0.04, anchor="ne")
-
-        self.aiBtnUs = ctk.CTkButton(self.usCard, text="", width=30, height=30, fg_color="transparent", hover_color=COLORS["bg_card"], command=lambda: self.launchTemplate("us", "illustrator"))
-        self.aiBtnUs.place(relx=0.84, rely=0.04, anchor="ne")
-
-        ctk.CTkLabel(self.usCard, text="US & MX Plate", font=ctk.CTkFont(size=14, weight="bold")).pack()
-        ctk.CTkButton(self.usCard, text="Download", fg_color=COLORS["accent_primary"], command=lambda: self.downloadTemplate("us")).pack(pady=20, padx=20, fill="x")
-
-        self.outlineEuCard = ctk.CTkFrame(cardsFrame, fg_color=COLORS["bg_secondary"], corner_radius=12, border_width=1, border_color=COLORS["border"])
-        self.outlineEuCard.grid(row=1, column=0, sticky="nsew", padx=(0, 5), pady=(15, 0))
-
-        self.outlineEuPreviewLabel = ctk.CTkLabel(self.outlineEuCard, text="Loading Preview...")
-        self.outlineEuPreviewLabel.pack(pady=(20, 10), padx=10, fill="both", expand=True)
-        
-        self.psBtnOutlineEu = ctk.CTkButton(self.outlineEuCard, text="", width=30, height=30, fg_color="transparent", hover_color=COLORS["bg_card"], command=lambda: self.launchTemplate("outline_eu", "photoshop"))
-        self.psBtnOutlineEu.place(relx=0.96, rely=0.04, anchor="ne")
-
-        self.aiBtnOutlineEu = ctk.CTkButton(self.outlineEuCard, text="", width=30, height=30, fg_color="transparent", hover_color=COLORS["bg_card"], command=lambda: self.launchTemplate("outline_eu", "illustrator"))
-        self.aiBtnOutlineEu.place(relx=0.84, rely=0.04, anchor="ne")
-
-        ctk.CTkLabel(self.outlineEuCard, text="EU White Outline", font=ctk.CTkFont(size=14, weight="bold")).pack()
-        ctk.CTkButton(self.outlineEuCard, text="Download", fg_color=COLORS["accent_primary"], command=lambda: self.downloadTemplate("outline_eu")).pack(pady=20, padx=20, fill="x")
-
-        self.outlineCard = ctk.CTkFrame(cardsFrame, fg_color=COLORS["bg_secondary"], corner_radius=12, border_width=1, border_color=COLORS["border"])
-        self.outlineCard.grid(row=1, column=1, sticky="nsew", padx=(5, 0), pady=(15, 0))
-
-        self.outlinePreviewLabel = ctk.CTkLabel(self.outlineCard, text="Loading Preview...")
-        self.outlinePreviewLabel.pack(pady=(20, 10), padx=10, fill="both", expand=True)
-        
-        self.psBtnOutline = ctk.CTkButton(self.outlineCard, text="", width=30, height=30, fg_color="transparent", hover_color=COLORS["bg_card"], command=lambda: self.launchTemplate("outline", "photoshop"))
-        self.psBtnOutline.place(relx=0.96, rely=0.04, anchor="ne")
-
-        self.aiBtnOutline = ctk.CTkButton(self.outlineCard, text="", width=30, height=30, fg_color="transparent", hover_color=COLORS["bg_card"], command=lambda: self.launchTemplate("outline", "illustrator"))
-        self.aiBtnOutline.place(relx=0.84, rely=0.04, anchor="ne")
-
-        ctk.CTkLabel(self.outlineCard, text="US White Outline", font=ctk.CTkFont(size=14, weight="bold")).pack()
-        ctk.CTkButton(self.outlineCard, text="Download", fg_color=COLORS["accent_primary"], command=lambda: self.downloadTemplate("outline")).pack(pady=20, padx=20, fill="x")
+        row = 0
+        col = 0
+        for name, tType in templates:
+            self.createTemplateCard(cardsFrame, row, col, name, tType)
+            col += 1
+            if col > 1:
+                col = 0
+                row += 1
 
     def setupSettingsPage(self):
         header = ctk.CTkLabel(self.settingsPage, text="Settings", font=ctk.CTkFont(family="Ubuntu", size=32, weight="bold"))
@@ -2090,7 +2131,10 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
         compFrame.pack(fill="x", pady=(10, 0), ipady=5)
         
         self.defaultOutLatestVar = ctk.StringVar(value=r"C:\XboxGames\Forza Horizon 5\Content\media\cars\_library\Textures.zip")
-        self.createPathSetting(compFrame, "Default Output - Latest (_library Textures.zip):", self.defaultOutLatestVar, mode="zip")
+        self.createPathSetting(compFrame, "Default Textures.zip - Latest (_library Textures.zip):", self.defaultOutLatestVar, mode="zip")
+
+        self.defaultMatLatestVar = ctk.StringVar(value=r"C:\XboxGames\Forza Horizon 5\Content\media\cars\_library\Materials.zip")
+        self.createPathSetting(compFrame, "Default Materials.zip - Latest (_library Materials.zip):", self.defaultMatLatestVar, mode="zip")
         
         self.defaultOutVar = ctk.StringVar(value=r"C:\Games\Forza Horizon 5\media\Stripped\MediaOverride\RC0\Cars\_library")
         self.createPathSetting(compFrame, "Default Output - v1.634 (_library Folder):", self.defaultOutVar, mode="dir")
@@ -2183,11 +2227,18 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                     
                     if hasattr(self, 'defaultOutLatestVar'): self.defaultOutLatestVar.set(data.get("default_out_latest", r"C:\XboxGames\Forza Horizon 5\Content\media\cars\_library\Textures.zip"))
                     if hasattr(self, 'defaultOutVar'): self.defaultOutVar.set(data.get("default_out", r"C:\Games\Forza Horizon 5\media\Stripped\MediaOverride\RC0\Cars\_library"))
+                    if hasattr(self, 'defaultMatLatestVar'): self.defaultMatLatestVar.set(data.get("default_mat_latest", r"C:\XboxGames\Forza Horizon 5\Content\media\cars\_library\Materials.zip"))
                     
                     if hasattr(self, 'compLevelVar'): self.compLevelVar.set(data.get("comp_level", "Normal (-mx5)"))
                     if hasattr(self, 'silentModeVar'): self.silentModeVar.set(data.get("silent_mode", False))
                     if hasattr(self, 'animationsVar'): self.animationsVar.set(data.get("animations", True))
-                    if hasattr(self, 'materialsZipVar'): self.materialsZipVar.set(data.get("materialsZip", "Not Selected"))
+                    if hasattr(self, 'materialsZipVar'):
+                        savedMat = data.get("materialsZip", "Not Selected")
+                        if savedMat == "Not Selected" and hasattr(self, 'defaultMatLatestVar'):
+                            defaultMat = self.defaultMatLatestVar.get()
+                            if os.path.isfile(defaultMat):
+                                savedMat = defaultMat
+                        self.materialsZipVar.set(savedMat)
                     if hasattr(self, 'glossyVar'): self.glossyVar.set(data.get("glossy_finish", False))
                     
                     loadedBackups = data.get("backupStates")
@@ -2242,6 +2293,7 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
                     "sz_path": getattr(self, "szPathVar", ctk.StringVar(value=r"C:\Program Files\7-Zip\7z.exe")).get(),
                     "default_out_latest": getattr(self, "defaultOutLatestVar", ctk.StringVar(value=r"C:\XboxGames\Forza Horizon 5\Content\media\cars\_library\Textures.zip")).get(),
                     "default_out": getattr(self, "defaultOutVar", ctk.StringVar(value=r"C:\Games\Forza Horizon 5\media\Stripped\MediaOverride\RC0\Cars\_library")).get(),
+                    "default_mat_latest": getattr(self, "defaultMatLatestVar", ctk.StringVar(value=r"C:\XboxGames\Forza Horizon 5\Content\media\cars\_library\Materials.zip")).get(),
                     "comp_level": getattr(self, "compLevelVar", ctk.StringVar(value="Normal (-mx5)")).get(),
                     "silent_mode": getattr(self, "silentModeVar", ctk.BooleanVar(value=False)).get(),
                     "backupStates": getattr(self, "backupStates", {}),
@@ -2263,20 +2315,17 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
             try:
                 exe = self.psPathVar.get().strip('"') if tool == "photoshop" else self.aiPathVar.get().strip('"')
                 
-                if tType == "outline":
-                    path = resourcePath("outline.png")
+                if tType in self.localTemplates:
+                    path = resourcePath(self.localTemplates[tType])
                     if not os.path.exists(path):
-                        self.after(0, lambda: messagebox.showerror("Error", "outline.png not found in the app folder."))
+                        self.after(0, lambda: messagebox.showerror("Error", f"{self.localTemplates[tType]} not found in the app folder."))
                         return
-                elif tType == "outline_eu":
-                    path = resourcePath("outline eu.png")
-                    if not os.path.exists(path):
-                        self.after(0, lambda: messagebox.showerror("Error", "outline eu.png not found in the app folder."))
-                        return
-                else:
+                elif tType in self.templateUrls:
                     r = requests.get(self.templateUrls[tType])
                     path = os.path.join(tempfile.gettempdir(), f"{tType}_plate.png")
                     with open(path, "wb") as f: f.write(r.content)
+                else:
+                    return
                 
                 if os.path.isfile(exe):
                     subprocess.Popen([exe, path])
@@ -2291,22 +2340,21 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
 
     def executeDownload(self, d, t):
         try:
-            if t == "outline":
-                src = resourcePath("outline.png")
-                if os.path.exists(src):
-                    shutil.copyfile(src, os.path.join(d, "US_Blank_Outline_Template.png"))
-                else:
-                    self.after(0, lambda: messagebox.showerror("Error", "outline.png not found."))
-                    return
-            elif t == "outline_eu":
-                src = resourcePath("outline eu.png")
-                if os.path.exists(src):
-                    shutil.copyfile(src, os.path.join(d, "EU_Blank_Outline_Template.png"))
-                else:
-                    self.after(0, lambda: messagebox.showerror("Error", "outline eu.png not found."))
-                    return
+            if t == "both":
+                keys = ["eu", "us"]
             else:
-                for key in (["eu", "us"] if t == "both" else [t]):
+                keys = [t]
+            
+            for key in keys:
+                if key in self.localTemplates:
+                    src = resourcePath(self.localTemplates[key])
+                    if os.path.exists(src):
+                        outName = f"{key.upper()}_Blank_Outline_Template.png" if "outline" in key else f"{key.upper()}_Plate_Template.png"
+                        shutil.copyfile(src, os.path.join(d, outName))
+                    else:
+                        self.after(0, lambda k=key: messagebox.showerror("Error", f"{self.localTemplates[k]} not found."))
+                        return
+                elif key in self.templateUrls:
                     r = requests.get(self.templateUrls[key])
                     with open(os.path.join(d, f"{key.upper()}_Plate_Template.png"), "wb") as f: f.write(r.content)
             self.after(0, lambda: messagebox.showinfo("Success", "Done!"))
@@ -2429,6 +2477,22 @@ class PlateMakerApp(DraggableMixin, ctk.CTk):
 
     def processFiles(self, imgPath, nrmlPath, outDir, silent=False):
         try:
+            if imgPath and os.path.isfile(imgPath) and nrmlPath and os.path.isfile(nrmlPath):
+                imgSize = Image.open(imgPath).size
+                nrmlSize = Image.open(nrmlPath).size
+                if imgSize != nrmlSize:
+                    targetW = max(imgSize[0], nrmlSize[0])
+                    targetH = max(imgSize[1], nrmlSize[1])
+                    self.log(f"Normalizing resolutions to {targetW}x{targetH}...")
+                    if imgSize != (targetW, targetH):
+                        resized = Image.open(imgPath).resize((targetW, targetH), Image.LANCZOS)
+                        imgPath = os.path.normpath(os.path.join(tempfile.gettempdir(), "resized_diff.png"))
+                        resized.save(imgPath)
+                    if nrmlSize != (targetW, targetH):
+                        resized = Image.open(nrmlPath).resize((targetW, targetH), Image.LANCZOS)
+                        nrmlPath = os.path.normpath(os.path.join(tempfile.gettempdir(), "resized_nrml.png"))
+                        resized.save(nrmlPath)
+
             outputBase = outDir
             selectedRegion = self.regionVar.get()
             targetFiles = EU_UK_FILES if selectedRegion == "EU & UK" else US_MX_FILES
@@ -3426,17 +3490,30 @@ del "%~f0"
         )
         self.btnSaveCustom.pack(fill="x", padx=0, pady=(20, 10))
 
+        secondRowFrame = ctk.CTkFrame(self.editorPage, fg_color="transparent")
+        secondRowFrame.pack(fill="x", padx=0, pady=(0, 10))
+
         self.btnSendToMm = ctk.CTkButton(
-            self.editorPage, 
+            secondRowFrame, 
             text=" OPEN IN 3D MAP MAKER", 
             image=self.loadIcon("map.png", size=20), 
             fg_color=COLORS["accent_primary"], 
             height=50, 
-            width=1200,
             font=ctk.CTkFont(size=14, weight="bold"),
             command=self.sendToMapMaker
         )
-        self.btnSendToMm.pack(fill="x", padx=0, pady=(0, 10))
+        self.btnSendToMm.pack(side="left", fill="x", expand=True, padx=(0, 5))
+
+        self.btnSendRecViewport = ctk.CTkButton(
+            secondRowFrame, 
+            text=" SEND TO VIEWPORT", 
+            image=self.loadIcon("view.png", size=20), 
+            fg_color=COLORS["accent_primary"], 
+            height=50, 
+            font=ctk.CTkFont(size=14, weight="bold"),
+            command=self.sendRecommendedToViewport
+        )
+        self.btnSendRecViewport.pack(side="left", fill="x", expand=True, padx=(5, 0))
 
         self.recMapFrame = ctk.CTkFrame(self.editorPage, fg_color="transparent")
         self.recMapFrame.pack(fill="x", padx=0, pady=(0, 20))
@@ -3454,7 +3531,7 @@ del "%~f0"
 
         self.btnSendRecComp = ctk.CTkButton(
             self.recMapFrame, 
-            text=" SEND RECOMMENDED TO COMPILER", 
+            text=" SEND REC. TO COMPILER", 
             image=self.loadIcon("package-plus.png", size=20), 
             fg_color=COLORS["accent_success"], 
             height=50, 
@@ -3482,6 +3559,9 @@ del "%~f0"
 
         self.btnSendRecComp.bind("<Enter>", lambda e: self.editorActionInfo.configure(text="Sends both the plate and the recommended 3D map straight to the Compiler.  "))
         self.btnSendRecComp.bind("<Leave>", lambda e: self.editorActionInfo.configure(text=""))
+
+        self.btnSendRecViewport.bind("<Enter>", lambda e: self.editorActionInfo.configure(text="Sends both the plate and the recommended 3D map to the 3D Viewport.  "))
+        self.btnSendRecViewport.bind("<Leave>", lambda e: self.editorActionInfo.configure(text=""))
 
         self.onStateChange(self.stateVar.get())
 
@@ -3603,6 +3683,204 @@ del "%~f0"
         else:
             self.editorPreviewLabel.configure(text="Missing template image.", image=None)
 
+    def setupViewportPage(self):
+        self.viewportPage.grid_rowconfigure(2, weight=1)
+        self.viewportPage.grid_columnconfigure(0, weight=1)
+
+        header = ctk.CTkLabel(self.viewportPage, text="3D Viewport", font=ctk.CTkFont(family="Ubuntu", size=32, weight="bold"), text_color=COLORS["text_primary"])
+        header.grid(row=0, column=0, sticky="w", padx=15, pady=(15, 10))
+
+        controlsFrame = ctk.CTkFrame(self.viewportPage, fg_color=COLORS["bg_secondary"], corner_radius=12, border_width=1, border_color=COLORS["border"])
+        controlsFrame.grid(row=1, column=0, sticky="ew", padx=15, pady=(0, 5))
+
+        topRow = ctk.CTkFrame(controlsFrame, fg_color="transparent")
+        topRow.pack(fill="x", padx=15, pady=(10, 5))
+
+        ctk.CTkLabel(topRow, text="PLATE MODEL:", font=ctk.CTkFont(size=11, weight="bold"), text_color=COLORS["text_muted"]).pack(side="left", padx=(0, 10))
+
+        self.viewportRegionVar = ctk.StringVar(value="US & MX")
+        self.viewportRegionSelector = ctk.CTkSegmentedButton(
+            topRow, values=["US & MX", "EU & UK"],
+            variable=self.viewportRegionVar, fg_color=COLORS["bg_card"],
+            selected_color=COLORS["accent_primary"], text_color=COLORS["text_primary"],
+            font=ctk.CTkFont(size=12, weight="bold"), height=32,
+            command=self.onViewportRegionChange
+        )
+        self.viewportRegionSelector.pack(side="left", padx=(0, 15))
+
+        self.viewportModelLabel = ctk.CTkLabel(topRow, text="", font=ctk.CTkFont(size=11), text_color=COLORS["text_muted"])
+        self.viewportModelLabel.pack(side="left", padx=(10, 0))
+
+        self.btnResetCam = ctk.CTkButton(
+            topRow,
+            text=" Reset Camera",
+            image=self.loadIcon("undo.png", size=16),
+            fg_color=COLORS["bg_card"],
+            hover_color=COLORS["border"],
+            height=32,
+            width=120,
+            command=self.resetViewportCamera
+        )
+        self.btnResetCam.pack(side="right")
+
+        bottomRow = ctk.CTkFrame(controlsFrame, fg_color="transparent")
+        bottomRow.pack(fill="x", padx=15, pady=(0, 10))
+
+        self.btnLoadTexture = ctk.CTkButton(
+            bottomRow,
+            text=" Load Texture",
+            image=self.loadIcon("image_small.png", size=16),
+            fg_color=COLORS["bg_card"],
+            hover_color=COLORS["border"],
+            height=32,
+            command=self.loadViewportTexture
+        )
+        self.btnLoadTexture.pack(side="left", padx=(0, 10))
+
+        self.btnLoadNormal = ctk.CTkButton(
+            bottomRow,
+            text=" Load Normal Map",
+            image=self.loadIcon("map.png", size=16),
+            fg_color=COLORS["bg_card"],
+            hover_color=COLORS["border"],
+            height=32,
+            command=self.loadViewportNormal
+        )
+        self.btnLoadNormal.pack(side="left", padx=(0, 10))
+
+        self.viewportTexLabel = ctk.CTkLabel(bottomRow, text="", font=ctk.CTkFont(size=11), text_color=COLORS["text_muted"])
+        self.viewportTexLabel.pack(side="left", padx=(10, 0))
+
+        viewportContainer = ctk.CTkFrame(self.viewportPage, fg_color=COLORS["bg_secondary"], corner_radius=12, border_width=1, border_color=COLORS["border"])
+        viewportContainer.grid(row=2, column=0, sticky="nsew", padx=15, pady=(5, 5))
+        viewportContainer.grid_rowconfigure(0, weight=1)
+        viewportContainer.grid_columnconfigure(0, weight=1)
+
+        self.viewport3d = None
+        self.viewportFallbackLabel = None
+
+        if HAS_OPENGL:
+            try:
+                self.viewport3d = Viewport3D(viewportContainer, width=600, height=400)
+                self.viewport3d.grid(row=0, column=0, sticky="nsew", padx=2, pady=2)
+            except Exception:
+                self.viewport3d = None
+
+        if self.viewport3d is None:
+            self.viewportFallbackLabel = ctk.CTkLabel(
+                viewportContainer,
+                text="3D Viewport requires PyOpenGL and pyopengltk.\nInstall with: pip install PyOpenGL pyopengltk",
+                font=ctk.CTkFont(size=14),
+                text_color=COLORS["text_muted"]
+            )
+            self.viewportFallbackLabel.grid(row=0, column=0, sticky="nsew", padx=20, pady=20)
+
+        hintLabel = ctk.CTkLabel(self.viewportPage, text="Left-click: Orbit  |  Right-click: Pan  |  Scroll: Zoom  |  Double-click: Recenter", font=ctk.CTkFont(size=10), text_color=COLORS["text_muted"])
+        hintLabel.grid(row=3, column=0, sticky="w", padx=20, pady=(2, 10))
+
+        self.after(500, lambda: self.loadViewportPlate("US & MX"))
+
+    def onViewportRegionChange(self, region):
+        self.loadViewportPlate(region)
+
+    def loadViewportPlate(self, region):
+        if not self.viewport3d:
+            return
+
+        if region == "US & MX":
+            filename = "PlateUS.modelbin"
+            skipCount = 2
+        else:
+            filename = "PlateEU.modelbin"
+            skipCount = 2
+
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
+        if not os.path.isfile(path):
+            self.viewportModelLabel.configure(text=f"{filename} not found", text_color=COLORS["accent_danger"])
+            return
+
+        self.viewportModelLabel.configure(text="Loading...", text_color=COLORS["accent_secondary"])
+
+        def process():
+            try:
+                parsed = parseModelbin(path, skipMeshes=skipCount)
+                def applyModel():
+                    self.viewport3d.uploadModel(parsed)
+                    verts = len(parsed.vertices)
+                    tris = len(parsed.indices) // 3
+                    self.viewportModelLabel.configure(text=f"{filename}  ({verts} verts, {tris} tris)", text_color=COLORS["accent_success"])
+                self.uiQueue.put(applyModel)
+            except Exception as e:
+                self.uiQueue.put(lambda err=e: (
+                    messagebox.showerror("Model Error", f"Failed to parse {filename}:\n{err}"),
+                    self.viewportModelLabel.configure(text=f"Failed to load {filename}", text_color=COLORS["accent_danger"])
+                ))
+
+        threading.Thread(target=process, daemon=True).start()
+
+    def loadViewportTexture(self):
+        if not self.viewport3d:
+            messagebox.showerror("Error", "3D viewport is not available.")
+            return
+
+        initial = self.lastDirs.get("img", "/")
+        path = filedialog.askopenfilename(
+            filetypes=[("Images", "*.png *.jpg *.jpeg *.bmp"), ("All files", "*.*")],
+            initialdir=initial,
+            title="Select Texture Image"
+        )
+        if not path:
+            return
+
+        try:
+            img = Image.open(path)
+            self.viewport3d.setDiffuseTexture(img)
+            self.viewportTexLabel.configure(text=f"Texture: {os.path.basename(path)}", text_color=COLORS["accent_success"])
+        except Exception as e:
+            messagebox.showerror("Texture Error", f"Failed to load texture:\n{e}")
+
+    def loadViewportNormal(self):
+        if not self.viewport3d:
+            messagebox.showerror("Error", "3D viewport is not available.")
+            return
+
+        initial = self.lastDirs.get("nrml", "/")
+        path = filedialog.askopenfilename(
+            filetypes=[("Images", "*.png *.jpg *.jpeg *.bmp"), ("All files", "*.*")],
+            initialdir=initial,
+            title="Select Normal Map Image"
+        )
+        if not path:
+            return
+
+        try:
+            img = Image.open(path)
+            self.viewport3d.setNormalTexture(img)
+            self.viewportTexLabel.configure(text=f"Normal: {os.path.basename(path)}", text_color=COLORS["accent_success"])
+        except Exception as e:
+            messagebox.showerror("Texture Error", f"Failed to load normal map:\n{e}")
+
+    def sendToPreview(self, imgPath, isNormal=False):
+        if not self.viewport3d:
+            return
+        if not imgPath or not os.path.isfile(imgPath):
+            return
+        try:
+            img = Image.open(imgPath)
+            if isNormal:
+                self.viewport3d.setNormalTexture(img)
+                self.viewportTexLabel.configure(text=f"Normal: {os.path.basename(imgPath)}", text_color=COLORS["accent_success"])
+            else:
+                self.viewport3d.setDiffuseTexture(img)
+                self.viewportTexLabel.configure(text=f"Texture: {os.path.basename(imgPath)}", text_color=COLORS["accent_success"])
+        except Exception:
+            pass
+
+    def resetViewportCamera(self):
+        if self.viewport3d:
+            self.viewport3d.resetCamera()
+
+
     def saveCustomPlate(self):
         img = self.generatePlateImage()
         if not img:
@@ -3654,9 +3932,9 @@ del "%~f0"
 
         isEu = "EU" in state
         if isEu:
-            strength, blur, direction = 9.0, 2.0, "Outward"
+            strength, blur, direction = 7.0, 1.5, "Outward"
         else:
-            strength, blur, direction = 10.0, 2.5, "Outward"
+            strength, blur, direction = 8.0, 1.8, "Outward"
 
         imagePath = resourcePath(config.get("image_no_tags"))
         if not imagePath or not os.path.exists(imagePath):
@@ -3705,6 +3983,7 @@ del "%~f0"
                 radius = self.getDynamicBlurRadius(strength, blur, baseImg.size[0])
                 if radius > 0:
                     nrmlMap = nrmlMap.filter(ImageFilter.GaussianBlur(radius=radius))
+                nrmlMap = nrmlMap.filter(ImageFilter.GaussianBlur(radius=5))
                 
                 nrmlMap.save(savePath, format="PNG")
                 self.uiQueue.put(lambda: messagebox.showinfo("Success", f"Recommended 3D map saved to:\n{savePath}"))
@@ -3717,7 +3996,14 @@ del "%~f0"
         threading.Thread(target=process, daemon=True).start()
 
     def sendRecommendedToCompiler(self):
-        self.btnSendRecComp.configure(state="disabled", text="⏳ PREPARING...")
+        self._sendRecommendedTo("compiler")
+
+    def sendRecommendedToViewport(self):
+        self._sendRecommendedTo("viewport")
+
+    def _sendRecommendedTo(self, target):
+        btn = self.btnSendRecComp if target == "compiler" else self.btnSendRecViewport
+        btn.configure(state="disabled", text="⏳ PREPARING...")
         def process():
             try:
                 img = self.generatePlateImage()
@@ -3729,7 +4015,7 @@ del "%~f0"
                 config = PLATE_TEMPLATES.get(state)
                 if not config: return
                 isEu = "EU" in state
-                strength, blur, direction = (9.0, 2.0, "Outward") if isEu else (10.0, 2.5, "Outward")
+                strength, blur, direction = (7.0, 1.5, "Outward") if isEu else (8.0, 1.8, "Outward")
                 imagePath = resourcePath(config.get("image_no_tags"))
                 if not imagePath or not os.path.exists(imagePath):
                     self.uiQueue.put(lambda: messagebox.showerror("Error", "Template not found."))
@@ -3750,32 +4036,53 @@ del "%~f0"
                 radius = self.getDynamicBlurRadius(strength, blur, baseImg.size[0])
                 if radius > 0:
                     nrmlMap = nrmlMap.filter(ImageFilter.GaussianBlur(radius=radius))
+                nrmlMap = nrmlMap.filter(ImageFilter.GaussianBlur(radius=5))
                 tempImgPath = os.path.normpath(os.path.join(tempfile.gettempdir(), "designer_img.png"))
                 tempNrmlPath = os.path.normpath(os.path.join(tempfile.gettempdir(), "designer_rec_map.png"))
                 img.save(tempImgPath)
                 nrmlMap.save(tempNrmlPath)
                 def updateUi():
-                    ratio = img.size[0] / img.size[1]
-                    targetRegion = "EU & UK" if ratio > 3.0 else "US & MX"
-                    self.regionVar.set(targetRegion)
-                    self.updateDropzoneRegions()
-                    self.imageDropZone.pathEntry.delete(0, "end")
-                    self.imageDropZone.pathEntry.insert(0, tempImgPath)
-                    self.imageDropZone.updatePreview(tempImgPath)
-                    self.nrmlDropZone.pathEntry.delete(0, "end")
-                    self.nrmlDropZone.pathEntry.insert(0, tempNrmlPath)
-                    self.nrmlDropZone.updatePreview(tempNrmlPath)
-                    self.imageDropZone.configure(border_color=COLORS["accent_success"])
-                    self.nrmlDropZone.configure(border_color=COLORS["accent_success"])
-                    self.showPage("compiler")
+                    if target == "compiler":
+                        ratio = img.size[0] / img.size[1]
+                        targetRegion = "EU & UK" if ratio > 3.0 else "US & MX"
+                        self.regionVar.set(targetRegion)
+                        self.updateDropzoneRegions()
+                        self.imageDropZone.pathEntry.delete(0, "end")
+                        self.imageDropZone.pathEntry.insert(0, tempImgPath)
+                        self.imageDropZone.updatePreview(tempImgPath)
+                        self.nrmlDropZone.pathEntry.delete(0, "end")
+                        self.nrmlDropZone.pathEntry.insert(0, tempNrmlPath)
+                        self.nrmlDropZone.updatePreview(tempNrmlPath)
+                        self.imageDropZone.configure(border_color=COLORS["accent_success"])
+                        self.nrmlDropZone.configure(border_color=COLORS["accent_success"])
+                        self.showPage("compiler")
+                    elif target == "viewport":
+                        ratio = img.size[0] / img.size[1]
+                        targetRegion = "EU & UK" if ratio > 3.0 else "US & MX"
+                        self.viewportRegionVar.set(targetRegion)
+                        self.onViewportRegionChange(targetRegion)
+                        self.sendToPreview(tempImgPath, isNormal=False)
+                        self.sendToPreview(tempNrmlPath, isNormal=True)
+                        self.showPage("3d_preview")
                 self.uiQueue.put(updateUi)
             except Exception as e:
                 self.uiQueue.put(lambda err=e: messagebox.showerror("Error", f"Could not send recommended map: {err}"))
             finally:
-                self.uiQueue.put(lambda: self.btnSendRecComp.configure(state="normal", text=" SEND RECOMMENDED TO COMPILER"))
+                def resetBtn():
+                    if target == "compiler":
+                        self.btnSendRecComp.configure(state="normal", text=" SEND REC. TO COMPILER")
+                    else:
+                        self.btnSendRecViewport.configure(state="normal", text=" SEND REC. TO VIEWPORT")
+                self.uiQueue.put(resetBtn)
         threading.Thread(target=process, daemon=True).start()
 
     def sendMapToCompiler(self):
+        self._sendMapTo("compiler")
+
+    def sendMapToPreview(self):
+        self._sendMapTo("preview")
+
+    def _sendMapTo(self, target):
         sourcePath = self.mmDropZone.getPath()
         if not sourcePath or not os.path.exists(sourcePath):
             messagebox.showerror("Error", "No source image found in Map Maker!")
@@ -3800,20 +4107,30 @@ del "%~f0"
                 finalMap.save(mapPath)
                 self.lastMmMap = mapPath
                 def updateUi():
-                    ratio = img.size[0] / img.size[1]
-                    targetRegion = "EU & UK" if ratio > 3.0 else "US & MX"
-                    self.regionVar.set(targetRegion)
-                    self.updateDropzoneRegions()
-                    self.imageDropZone.pathEntry.delete(0, "end")
-                    self.imageDropZone.pathEntry.insert(0, sourcePath)
-                    self.imageDropZone.updatePreview(sourcePath)
-                    self.nrmlDropZone.pathEntry.delete(0, "end")
-                    self.nrmlDropZone.pathEntry.insert(0, self.lastMmMap)
-                    self.nrmlDropZone.updatePreview(self.lastMmMap)
-                    self.imageDropZone.configure(border_color=COLORS["accent_success"])
-                    self.nrmlDropZone.configure(border_color=COLORS["accent_success"])
-                    self.mmStatusLabel.configure(text="")
-                    self.showPage("compiler")
+                    if target == "compiler":
+                        ratio = img.size[0] / img.size[1]
+                        targetRegion = "EU & UK" if ratio > 3.0 else "US & MX"
+                        self.regionVar.set(targetRegion)
+                        self.updateDropzoneRegions()
+                        self.imageDropZone.pathEntry.delete(0, "end")
+                        self.imageDropZone.pathEntry.insert(0, sourcePath)
+                        self.imageDropZone.updatePreview(sourcePath)
+                        self.nrmlDropZone.pathEntry.delete(0, "end")
+                        self.nrmlDropZone.pathEntry.insert(0, self.lastMmMap)
+                        self.nrmlDropZone.updatePreview(self.lastMmMap)
+                        self.imageDropZone.configure(border_color=COLORS["accent_success"])
+                        self.nrmlDropZone.configure(border_color=COLORS["accent_success"])
+                        self.mmStatusLabel.configure(text="")
+                        self.showPage("compiler")
+                    elif target == "preview":
+                        ratio = img.size[0] / img.size[1]
+                        targetRegion = "EU & UK" if ratio > 3.0 else "US & MX"
+                        self.viewportRegionVar.set(targetRegion)
+                        self.onViewportRegionChange(targetRegion)
+                        self.mmStatusLabel.configure(text="")
+                        self.sendToPreview(sourcePath, isNormal=False)
+                        self.sendToPreview(self.lastMmMap, isNormal=True)
+                        self.showPage("3d_preview")
                 self.uiQueue.put(updateUi)
             except Exception as e:
                 self.uiQueue.put(lambda e=e: messagebox.showerror("Error", f"Failed to generate map: {e}"))
@@ -4019,10 +4336,38 @@ del "%~f0"
             
             ctk.CTkButton(card, text=btnText, state=btnState, fg_color=btnColor, command=lambda i=item: self.togglePresetCart(i)).pack(pady=(0, 20), padx=20, fill="x")
 
+            viewBtn = ctk.CTkButton(
+                card, 
+                text="", 
+                image=self.loadIcon("view.png", size=16),
+                width=30, height=30,
+                fg_color=COLORS["bg_card"],
+                hover_color=COLORS["accent_primary"],
+                command=lambda i=item: self.sendPresetToViewport(i)
+            )
+            viewBtn.place(relx=1.0, rely=0.0, anchor="ne", x=-10, y=10)
+            viewBtn.lift()
+
             colIdx += 1
             if colIdx > 1:
                 colIdx = 0
                 rowIdx += 1
+
+    def sendPresetToViewport(self, item):
+        targetRegion = item['region']
+        if self.viewportRegionVar.get() != targetRegion:
+            self.viewportRegionVar.set(targetRegion)
+            self.loadViewportPlate(targetRegion)
+            
+        imgPath = item.get('img')
+        if imgPath and os.path.exists(imgPath):
+            self.sendToPreview(imgPath, isNormal=False)
+            
+        nrmlPath = item.get('nrml')
+        if nrmlPath and os.path.exists(nrmlPath):
+            self.sendToPreview(nrmlPath, isNormal=True)
+            
+        self.showPage("3d_preview")
 
     def loadPresetPreview(self, path, label, region):
         def backgroundtask():
@@ -4241,9 +4586,12 @@ del "%~f0"
         self.changelogFrame.grid_columnconfigure(1, weight=1)
 
         changes = [
-            ("Front Plate Support", "Added support for applying plates to mods that utilize front plates."),
-            ("Multi-Plate Compatibility", "Enhanced logic to automatically find and apply to multiple plates on the same car."),
-            ("New Presets", "Added 2 new presets: Japanese Plate 2 and French Plate.")
+            ("3D Viewport", "Added interactive 3D visualization for plates and generated depth maps."),
+            ("Cross-Tab Sync", "Send generated plates to the Viewport instantly from any tab."),
+            ("New Presets", "Added 3 new presets: Quiet Plate 3, and Black and White Japanese Temporary Plates."),
+            ("More Templates", "Added the rest of the plate textures directly from the FH5 gamefiles."),
+            ("Presets Tab Moved", "Presets tab is now located after the templates tab."),
+            ("Bugfixes", "Fixed a bug regarding different resolution diffuse maps and normal maps.")
         ]
 
         for idx, (title, desc) in enumerate(changes):
@@ -4538,7 +4886,7 @@ del "%~f0"
 
         threading.Thread(target=prepare, daemon=True).start()
 
-    def savePaintedNormalMap(self, finalImg, sendToCompiler=False):
+    def savePaintedNormalMap(self, finalImg, sendToCompiler=False, sendToPreview=False):
         tempPath = os.path.normpath(os.path.join(tempfile.gettempdir(), "last_painted_map.png"))
         
         try:
@@ -4547,6 +4895,8 @@ del "%~f0"
             
             if sendToCompiler:
                 self.sendMapToCompiler() 
+            elif sendToPreview:
+                self.sendMapToPreview()
             else:
                 self.mmStatusLabel.configure(text="✅ Changes Saved Internally!", text_color=COLORS["accent_success"])
                 self.after(4000, lambda: self.mmStatusLabel.configure(text=""))
