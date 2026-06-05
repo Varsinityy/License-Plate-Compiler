@@ -390,6 +390,14 @@ class VertexLayoutElement:
         self.format = -1
 
 
+class MeshGroup:
+    def __init__(self, indexStart, indexCount, materialId, meshName=""):
+        self.indexStart = indexStart
+        self.indexCount = indexCount
+        self.materialId = materialId
+        self.meshName = meshName
+
+
 class ParsedModel:
     def __init__(self):
         self.vertices = None
@@ -397,9 +405,10 @@ class ParsedModel:
         self.uvs = None
         self.indices = None
         self.meshName = ""
+        self.meshGroups = []
+        self.materialNames = []  # list of lowercased material name strings, indexed by materialId
 
-
-def parseModelbin(filepath, requestedLod=1, requestedRenderPass=0xFFFF, skipMeshes=1):
+def parseModelbin(filepath, requestedLod=1, requestedRenderPass=0xFFFF, skipMeshes=1, onlyMaterialIds=None):
     with open(filepath, "rb") as f:
         data = f.read()
     s = BinaryStream(memoryview(data))
@@ -431,17 +440,26 @@ def parseModelbin(filepath, requestedLod=1, requestedRenderPass=0xFFFF, skipMesh
     indexBuffer.deserialize(indBBlobs[0])
 
     verBBlobs = bundle.blobs[Tag.VerB]
-    vertexBuffers = [ModelBuffer() for _ in range(len(verBBlobs))]
+    maxVbId = max((vb.metadata[Tag.Id].readS32() for vb in verBBlobs), default=-1)
+    for vb in verBBlobs:
+        vb.metadata[Tag.Id].stream.seek(0)
+    vertexBuffers = [ModelBuffer() for _ in range(maxVbId + 2)]
     for vbBlob in verBBlobs:
         vertexBuffers[vbBlob.metadata[Tag.Id].readS32() + 1].deserialize(vbBlob)
 
     matIBlobs = bundle.blobs[Tag.MatI]
-    materialNames = []
+    materialNamesById = {}
     for matBlob in matIBlobs:
+        materialId = matBlob.metadata[Tag.Id].readS32() if Tag.Id in matBlob.metadata else len(materialNamesById)
         if Tag.Name in matBlob.metadata:
-            materialNames.append(matBlob.metadata[Tag.Name].readString().lower())
+            materialNamesById[materialId] = matBlob.metadata[Tag.Name].readString().lower()
         else:
-            materialNames.append("")
+            materialNamesById[materialId] = ""
+    maxMaterialId = max(materialNamesById.keys(), default=-1)
+    materialNames = [""] * (maxMaterialId + 1)
+    for materialId, materialName in materialNamesById.items():
+        if materialId >= 0:
+            materialNames[materialId] = materialName
 
     meshBlobs = bundle.blobs[Tag.Mesh]
     meshes = [MeshData() for _ in range(len(meshBlobs))]
@@ -452,6 +470,7 @@ def parseModelbin(filepath, requestedLod=1, requestedRenderPass=0xFFFF, skipMesh
     allNorms = []
     allUvs = []
     allIndices = []
+    meshGroupList = []
     vertexOffset = 0
 
     for meshIdx, mesh in enumerate(meshes):
@@ -461,6 +480,8 @@ def parseModelbin(filepath, requestedLod=1, requestedRenderPass=0xFFFF, skipMesh
         if "atlas" in meshNameLower:
             continue
         if meshIdx < skipMeshes and len(meshes) > skipMeshes:
+            continue
+        if onlyMaterialIds is not None and mesh.materialId not in onlyMaterialIds:
             continue
 
         drawIndices = [0] * mesh.indexCount
@@ -588,10 +609,12 @@ def parseModelbin(filepath, requestedLod=1, requestedRenderPass=0xFFFF, skipMesh
             verts[idx] = (-v2[0], -v2[2], v2[1])
             norms[idx] = (-n2[0], -n2[2], n2[1])
 
+        indexStart = len(allIndices)
         for f in faces:
             allIndices.append(f[0] + vertexOffset)
             allIndices.append(f[1] + vertexOffset)
             allIndices.append(f[2] + vertexOffset)
+        meshGroupList.append(MeshGroup(indexStart, len(allIndices) - indexStart, mesh.materialId, mesh.name))
 
         allVerts.extend(verts)
         allNorms.extend(norms)
@@ -607,4 +630,6 @@ def parseModelbin(filepath, requestedLod=1, requestedRenderPass=0xFFFF, skipMesh
     result.uvs = np.array(allUvs, dtype=np.float32)
     result.indices = np.array(allIndices, dtype=np.uint32)
     result.meshName = meshes[0].name if meshes else "unknown"
+    result.meshGroups = meshGroupList
+    result.materialNames = materialNames
     return result
