@@ -1,5 +1,6 @@
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
+import ctypes
 
 try:
     from pyopengltk import OpenGLFrame
@@ -124,6 +125,20 @@ class Viewport3D(OpenGLFrame if HAS_OPENGL else object):
         self._pendingNormal = None
         self._cpuVertices = None
         self._cpuIndices = None
+        self._meshGroups = []
+        self._materialNames = []
+        self._hiddenMaterialIds = set()
+        self._hiddenMaterialNames = set()
+        self._hiddenMeshNames = set()
+        self._texturedMaterialIds = None
+        self._texturedMaterialNames = None
+        self._statusTextureText = ""
+        self._statusNormalText = ""
+        self._statusTextureId = 0
+        self._statusNormalId = 0
+        self._statusTextureSize = (0, 0)
+        self._statusNormalSize = (0, 0)
+        self._statusDirty = True
         self.shaderProgram = 0
         self.tangentAttrib = -1
         self._glInitDone = False
@@ -193,6 +208,7 @@ class Viewport3D(OpenGLFrame if HAS_OPENGL else object):
         self.drawGrid()
         if self.hasModel:
             self.drawModel()
+        self.drawStatusText(w, h)
 
     def updateGrid(self):
         step = 0.1
@@ -278,7 +294,56 @@ class Viewport3D(OpenGLFrame if HAS_OPENGL else object):
             glVertexAttribPointer(self.tangentAttrib, 3, GL_FLOAT, GL_FALSE, 0, None)
 
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.eboIndices)
-        glDrawElements(GL_TRIANGLES, self.indexCount, GL_UNSIGNED_INT, None)
+
+        if (
+            self._texturedMaterialIds is None
+            and self._texturedMaterialNames is None
+            and not self._hiddenMaterialIds
+            and not self._hiddenMaterialNames
+            and not getattr(self, "_hiddenMeshNames", set())
+        ):
+            glDrawElements(GL_TRIANGLES, self.indexCount, GL_UNSIGNED_INT, None)
+        else:
+            texturedNames = self._texturedMaterialNames or set()
+            for group in self._meshGroups:
+                matName = self._materialName(group.materialId)
+                if group.materialId in self._hiddenMaterialIds or matName in self._hiddenMaterialNames:
+                    continue
+
+                mesh_hidden = False
+                if hasattr(self, "_hiddenMeshNames") and self._hiddenMeshNames:
+                    mname = getattr(group, "meshName", "").lower()
+                    for hname in self._hiddenMeshNames:
+                        if hname in mname:
+                            mesh_hidden = True
+                            break
+                if mesh_hidden:
+                    continue
+
+                useTexture = self.hasDiffuse and (
+                    group.materialId in (self._texturedMaterialIds or set()) or matName in texturedNames
+                )
+                useNormal = self.hasNormal and (
+                    group.materialId in (self._texturedMaterialIds or set()) or matName in texturedNames
+                )
+
+                if self.shaderProgram:
+                    glUniform1i(glGetUniformLocation(self.shaderProgram, "uHasDiffuse"), 1 if useTexture else 0)
+                    glUniform1i(glGetUniformLocation(self.shaderProgram, "uHasNormal"), 1 if useNormal else 0)
+                else:
+                    glActiveTexture(GL_TEXTURE0)
+                    if useTexture:
+                        glEnable(GL_TEXTURE_2D)
+                        glBindTexture(GL_TEXTURE_2D, self.diffuseTexId)
+                    else:
+                        glDisable(GL_TEXTURE_2D)
+
+                glDrawElements(
+                    GL_TRIANGLES,
+                    group.indexCount,
+                    GL_UNSIGNED_INT,
+                    ctypes.c_void_p(group.indexStart * np.dtype(np.uint32).itemsize)
+                )
 
         if self.shaderProgram and self.tangentAttrib >= 0:
             glDisableVertexAttribArray(self.tangentAttrib)
@@ -295,6 +360,112 @@ class Viewport3D(OpenGLFrame if HAS_OPENGL else object):
 
     def uploadModel(self, parsedModel):
         self._pendingModel = parsedModel
+
+    def setMaterialTextureRules(
+        self,
+        hiddenMaterialIds=None,
+        hiddenMaterialNames=None,
+        texturedMaterialIds=None,
+        texturedMaterialNames=None,
+        hiddenMeshNames=None
+    ):
+        self._hiddenMaterialIds = set(hiddenMaterialIds or [])
+        self._hiddenMaterialNames = {name.lower() for name in (hiddenMaterialNames or [])}
+        self._hiddenMeshNames = {name.lower() for name in (hiddenMeshNames or [])}
+        if texturedMaterialIds is None:
+            self._texturedMaterialIds = None
+        else:
+            self._texturedMaterialIds = set(texturedMaterialIds)
+        if texturedMaterialNames is None:
+            self._texturedMaterialNames = None
+        else:
+            self._texturedMaterialNames = {name.lower() for name in texturedMaterialNames}
+
+    def setStatusText(self, textureText=None, normalText=None):
+        if textureText is not None:
+            self._statusTextureText = textureText
+        if normalText is not None:
+            self._statusNormalText = normalText
+        self._statusDirty = True
+
+    def _makeStatusTexture(self, text, existingId):
+        if existingId:
+            glDeleteTextures([existingId])
+        if not text:
+            return 0, (0, 0)
+
+        font = ImageFont.load_default()
+        bbox = ImageDraw.Draw(Image.new("RGBA", (1, 1))).textbbox((0, 0), text, font=font)
+        w = max(1, bbox[2] - bbox[0] + 2)
+        h = max(1, bbox[3] - bbox[1] + 2)
+        img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        draw.text((1 - bbox[0], 1 - bbox[1]), text, font=font, fill=(16, 185, 129, 255))
+        data = np.array(img, dtype=np.uint8)
+
+        texId = glGenTextures(1)
+        glBindTexture(GL_TEXTURE_2D, texId)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data)
+        glBindTexture(GL_TEXTURE_2D, 0)
+        return texId, (w, h)
+
+    def _drawStatusTexture(self, texId, x, y, size):
+        w, h = size
+        if not texId or w <= 0 or h <= 0:
+            return
+        glBindTexture(GL_TEXTURE_2D, texId)
+        glBegin(GL_QUADS)
+        glTexCoord2f(0.0, 1.0); glVertex2f(x, y)
+        glTexCoord2f(1.0, 1.0); glVertex2f(x + w, y)
+        glTexCoord2f(1.0, 0.0); glVertex2f(x + w, y + h)
+        glTexCoord2f(0.0, 0.0); glVertex2f(x, y + h)
+        glEnd()
+
+    def drawStatusText(self, viewportW, viewportH):
+        if self._statusDirty:
+            self._statusTextureId, self._statusTextureSize = self._makeStatusTexture(self._statusTextureText, self._statusTextureId)
+            self._statusNormalId, self._statusNormalSize = self._makeStatusTexture(self._statusNormalText, self._statusNormalId)
+            self._statusDirty = False
+
+        if not self._statusTextureId and not self._statusNormalId:
+            return
+
+        glUseProgram(0)
+        glMatrixMode(GL_PROJECTION)
+        glPushMatrix()
+        glLoadIdentity()
+        glOrtho(0, viewportW, 0, viewportH, -1, 1)
+
+        glMatrixMode(GL_MODELVIEW)
+        glPushMatrix()
+        glLoadIdentity()
+
+        glDisable(GL_DEPTH_TEST)
+        glDisable(GL_LIGHTING)
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        glEnable(GL_TEXTURE_2D)
+        glColor4f(1.0, 1.0, 1.0, 1.0)
+
+        pad = 10
+        y = 8
+        self._drawStatusTexture(self._statusTextureId, pad, y, self._statusTextureSize)
+        normalW = self._statusNormalSize[0]
+        self._drawStatusTexture(self._statusNormalId, viewportW - normalW - pad, y, self._statusNormalSize)
+
+        glBindTexture(GL_TEXTURE_2D, 0)
+        glDisable(GL_TEXTURE_2D)
+        glDisable(GL_BLEND)
+        glEnable(GL_DEPTH_TEST)
+
+        glPopMatrix()
+        glMatrixMode(GL_PROJECTION)
+        glPopMatrix()
+        glMatrixMode(GL_MODELVIEW)
 
     def _computeTangents(self, vertices, normals, uvs, indices):
         tangents = np.zeros_like(vertices)
@@ -352,6 +523,8 @@ class Viewport3D(OpenGLFrame if HAS_OPENGL else object):
 
         self.vertexCount = len(parsedModel.vertices)
         self.indexCount = len(indices)
+        self._meshGroups = getattr(parsedModel, "meshGroups", []) or []
+        self._materialNames = getattr(parsedModel, "materialNames", []) or []
 
         if self.vboVertices:
             bufs = [self.vboVertices, self.vboNormals, self.vboUvs, self.eboIndices]
@@ -393,12 +566,20 @@ class Viewport3D(OpenGLFrame if HAS_OPENGL else object):
         self.targetX = float(center[0])
         self.targetY = float(center[1])
         self.targetZ = float(center[2])
+        self.defaultTargetX = self.targetX
+        self.defaultTargetY = self.targetY
+        self.defaultTargetZ = self.targetZ
         self.zoom = float(extent * 1.2) if extent > 0.01 else 2.0
         self.panX = 0.0
         self.panY = 0.0
         self.rotX = 90.0
         self.rotY = 180.0
         self.updateGrid()
+
+    def _materialName(self, materialId):
+        if 0 <= materialId < len(self._materialNames):
+            return self._materialNames[materialId].lower()
+        return ""
 
     def setDiffuseTexture(self, pilImage):
         if pilImage is None:
@@ -435,7 +616,14 @@ class Viewport3D(OpenGLFrame if HAS_OPENGL else object):
         self.rotY = 180.0
         self.panX = 0.0
         self.panY = 0.0
-        self.zoom = 2.0
+        if hasattr(self, 'defaultTargetX'):
+            self.targetX = self.defaultTargetX
+            self.targetY = self.defaultTargetY
+            self.targetZ = self.defaultTargetZ
+        if hasattr(self, 'modelExtent') and self.modelExtent > 0.01:
+            self.zoom = float(self.modelExtent * 1.2)
+        else:
+            self.zoom = 2.0
 
     def onLeftPress(self, event):
         self.lastMouseX = event.x
