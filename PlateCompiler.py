@@ -118,7 +118,7 @@ COLORS = {
     "text_muted": "#71717a",
 }
 
-APP_VERSION = "1.9.0"
+APP_VERSION = "1.9.1"
 
 EU_UK_FILES = [
     "plate_eu1_base_diff_82ddf780-5958-4917-807d-31a9a76e08fc.swatchbin",
